@@ -26,7 +26,7 @@ const MyCharacterPage = props => {
     <div className={s.characterContainer}>
       <div className='row mt-2'>
         <div className='col-12 ps-4 pe-4'>
-          <h1 className={s.header}>Character Customizer</h1>
+          <h1 className={s.header}>Avatar Editor</h1>
         </div>
       </div>
       <CharacterCustomizationStore.Provider>

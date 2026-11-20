@@ -93,6 +93,7 @@ interface IQueueEntry {
 	request: string;
 	jobId: string;
 	createdAt: number;
+	priority?: number;
 }
 
 interface IRccConnection {
@@ -671,8 +672,14 @@ export default class CommandHandler extends StdExceptions {
 	private RunningJobIds: string[] = [];
 	private JobQueueRunningCount = 0;
 	private RenderRcc: IGameEntry[] = [];
-	public addToQueue(item: IQueueEntry): void {
-		this.JobQueue.push(item);
+	public addToQueue(item: IQueueEntry, priority = 1): void {
+		item.priority = priority;
+		const insertAt = this.JobQueue.findIndex(queued => (queued.priority ?? 1) > priority);
+		if (insertAt === -1) {
+			this.JobQueue.push(item);
+		} else {
+			this.JobQueue.splice(insertAt, 0, item);
+		}
 		console.log('[info] addToQueue. queue length =', this.JobQueue.length, 'rcc runner count =', this.JobQueueRunningCount, 'rcc instance count =', this.RenderRcc.length);
 		if (this.JobQueueRunningCount < maxJobQueueRunningCount) {
 			console.log('[info] start job queue because it is not running');
@@ -854,7 +861,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.asset).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.asset).toString())
 		, uuid.v4());
-		this.addToQueue(job);
+		this.addToQueue(job, 0);
 		return (await getResult(job.jobId, resolutionMultiplier.asset)).thumbnail;
 	}
 
@@ -958,7 +965,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.userHeadshot).toString())
 		, uuid.v4());
 		// create the job
-		this.addToQueue(jobRequest);
+		this.addToQueue(jobRequest, 0);
 		// await job
 		const result = await getResult(jobRequest.jobId, resolutionMultiplier.userHeadshot);
 		// return base64 value
@@ -981,7 +988,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.userThumbnail).toString())
 		, uuid.v4());
 		// create the job
-		this.addToQueue(jobRequest);
+		this.addToQueue(jobRequest, 0);
 		// await job
 		const result = await getResult(jobRequest.jobId, resolutionMultiplier.userThumbnail);
 		// return base64 value

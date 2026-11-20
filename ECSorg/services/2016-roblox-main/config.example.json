@@ -12,7 +12,10 @@
         "catalogPageLimit": 28,
         "catalogSaleCountVisibleFromDetailsEndpoint": true,
         "catalogDetailsPageResellerLimit": 10,
-        "avatarPageInventoryLimit": 10
+        "avatarPageInventoryLimit": 10,
+        "settingsPageThemeSelectorEnabled": true,
+        "gameGenreFilterMethod": "keyword",
+        "gameGenreFilterSupported": true
       },
       "baseUrl": "https://www.roblox.com",
       "apiFormat": "https://{0}.roblox.com{1}"

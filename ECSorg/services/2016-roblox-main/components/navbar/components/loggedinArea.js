@@ -100,11 +100,9 @@ const LoggedInArea = props => {
     <div className='row'>
       <div className={`col-12 ${s.linkContainer}`}>
         <p className={s.text} title={authStore.robux.toLocaleString()}>
-          <Link href='/My/Money.aspx'>
-            <a>
-              <span className='icon-nav-robux'/>
-            </a>
-          </Link>
+          <a href='/404'>
+            <span className='icon-nav-robux'/>
+          </a>
         </p>
         <p className={s.text + ' ' + s.robuxText} title={authStore.robux.toLocaleString()}>
           <span>{abbreviateNumber(authStore.robux)}</span>

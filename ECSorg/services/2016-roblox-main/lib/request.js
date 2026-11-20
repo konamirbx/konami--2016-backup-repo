@@ -3,7 +3,7 @@ import config from '../lib/config';
 let _csrf = '';
 
 const getFullUrl = (apiSite, fullUrl) => {
-0  const url = config.publicRuntimeConfig.backend.apiFormat.replace(/\{0\}/g, apiSite).replace(/\{1\}/g, fullUrl);
+  const url = config.publicRuntimeConfig.backend.apiFormat.replace(/\{0\}/g, apiSite).replace(/\{1\}/g, fullUrl);
   if (typeof window === 'undefined' && url.startsWith('/')) {
     return config.serverRuntimeConfig.backend.baseUrl + url;
   }

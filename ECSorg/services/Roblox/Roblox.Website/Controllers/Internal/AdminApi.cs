@@ -1996,7 +1996,17 @@ Thank you for your understanding,
         if (!Enum.IsDefined(request.assetTypeId))
             throw new StaffException("Bad assetTypeId");
         var isPackage = request.assetTypeId == Type.Package;
-        var disableRender = isPackage;
+        var renderBeforeReturning = request.assetTypeId is
+            Type.Hat or
+            Type.Gear or
+            Type.HairAccessory or
+            Type.FaceAccessory or
+            Type.NeckAccessory or
+            Type.ShoulderAccessory or
+            Type.FrontAccessory or
+            Type.BackAccessory or
+            Type.WaistAccessory;
+        var disableRender = isPackage || renderBeforeReturning;
         IEnumerable<long>? packageAssetIds = null;
         
         if (!isPackage && request.rbxm == null)
@@ -2074,6 +2084,10 @@ Thank you for your understanding,
         await services.assets.SetItemPrice(assetDetails.assetId, request.price, null);
         await services.assets.UpdateAssetMarketInfo(assetDetails.assetId, request.isForSale, request.isLimited,
             request.isLimitedUnique, request.maxCopies, request.offsaleDeadline);
+        if (renderBeforeReturning)
+        {
+            await services.assets.RenderAssetAsync(assetDetails.assetId, request.assetTypeId);
+        }
         // return
         return assetDetails;
     }
@@ -2135,11 +2149,10 @@ Thank you for your understanding,
         {
             canUpload = true;
         }
-
         if (canUpload == false) throw new StaffException("Not authorized to modify this item");
         if (info.assetType == Type.Package) throw new StaffException("Cannot create an asset version for this type");
         var result = await services.assets.CreateAssetVersion(request.assetId, 1, request.rbxm.OpenReadStream());
-        services.assets.RenderAsset(request.assetId, info.assetType);
+        await services.assets.RenderAssetAsync(request.assetId, info.assetType);
         return result;
     }
 

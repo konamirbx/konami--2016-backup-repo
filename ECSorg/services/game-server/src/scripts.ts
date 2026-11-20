@@ -5,6 +5,8 @@ import conf from './helpers/Config';
 
 const env = conf.baseUrl.indexOf('localhost') !== -1 ? 'development' : 'production';
 console.log('Env =',env);
+const rccContentBaseUrl = 'http://127.0.0.1';
+const rccAssetUrl = `${rccContentBaseUrl}/asset`;
 
 const scripts: Record<string, string> = {
 	// GS
@@ -27,6 +29,11 @@ for (const s in scripts) {
 		.replace(/local url = "base_url"/g, `local url = "${conf.baseUrl}"`)
 		// set access key
 		.replace(/_AUTHORIZATION_STRING_/g, conf.authorization.replace('"', '\\"'))
+		.replace(/RCC_ASSET_URL/g, `${rccAssetUrl}?id=%d`)
+		.replace(/RCC_INSERT_ASSET_URL/g, `${rccAssetUrl}?id=%d`)
+		.replace(/RCC_ASSET_BASE_URL/g, `${rccAssetUrl}/`)
+		.replace(/RCC_ASSET_PREFIX/g, `${rccAssetUrl}?id=`)
+		.replace(/RCC_CONTENT_BASE_URL/g, rccContentBaseUrl)
 		.replace(/isDebugServer = false/g, env === 'development' ? 'isDebugServer = true' : 'isDebugServer = false')
 		// set upload url
 		// .replace(/UPLOAD_URL_HERE/g, (dockerEnabled ? 'http://host.docker.internal' : 'http://127.0.0.1:') + conf.port + '/api/upload-thumbnail-v1')

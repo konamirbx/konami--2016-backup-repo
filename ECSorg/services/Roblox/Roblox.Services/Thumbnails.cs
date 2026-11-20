@@ -35,11 +35,13 @@ public class ThumbnailsService : ServiceBase, IService
             {
                 ids = new List<Models.Assets.Type>()
                 {
-                    // Focus on user-generated content for now. We might add hats/games in the future.
+                    // Assets whose thumbnails are generated automatically.
                     Models.Assets.Type.TeeShirt,
                     Models.Assets.Type.Shirt,
                     Models.Assets.Type.Pants,
                     Models.Assets.Type.Image,
+                    Models.Assets.Type.Decal,
+                    Models.Assets.Type.Face,
                     // >:D
                     Models.Assets.Type.Hat,
                     Models.Assets.Type.Gear,
@@ -50,9 +52,6 @@ public class ThumbnailsService : ServiceBase, IService
                     Models.Assets.Type.FrontAccessory,
                     Models.Assets.Type.BackAccessory,
                     Models.Assets.Type.WaistAccessory,
-                    Models.Assets.Type.Image,
-                    
-                    Models.Assets.Type.Face,
                     Models.Assets.Type.Place,
                     Models.Assets.Type.Mesh,
                     Models.Assets.Type.MeshPart,
@@ -62,7 +61,28 @@ public class ThumbnailsService : ServiceBase, IService
         var response = new List<AssetIdWithType>();
         response.AddRange(outOfDate);
         response.AddRange(query);
-        return response;
+        return response
+            .OrderBy(item => item.assetType switch
+            {
+                Models.Assets.Type.Hat or
+                Models.Assets.Type.Gear or
+                Models.Assets.Type.HairAccessory or
+                Models.Assets.Type.FaceAccessory or
+                Models.Assets.Type.NeckAccessory or
+                Models.Assets.Type.ShoulderAccessory or
+                Models.Assets.Type.FrontAccessory or
+                Models.Assets.Type.BackAccessory or
+                Models.Assets.Type.WaistAccessory => 0,
+                Models.Assets.Type.TeeShirt or
+                Models.Assets.Type.Shirt or
+                Models.Assets.Type.Pants => 1,
+                Models.Assets.Type.Image or
+                Models.Assets.Type.Decal or
+                Models.Assets.Type.Face => 2,
+                _ => 3,
+            })
+            .ThenBy(item => item.assetId)
+            .ToArray();
     }
     
     public async Task<IEnumerable<ThumbnailEntry>> GetUserHeadshots(IEnumerable<long> userIds)

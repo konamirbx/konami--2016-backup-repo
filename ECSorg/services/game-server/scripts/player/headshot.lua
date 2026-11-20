@@ -10,7 +10,7 @@ local function applyMesh(Player, children, limb)
         local head = Player.Character[limb]
         local m = head:FindFirstChild("Mesh")
         if not m then
-            m = Instance.New("SpecialMesh")
+            m = Instance.new("SpecialMesh")
             m.Parent = head
         end
         -- set
@@ -38,6 +38,98 @@ local function applyPackage(Player, children)
     end
 end
 
+local function findFirstChildOfType(model, className)
+    for _, child in pairs(model:GetChildren()) do
+        if child:IsA(className) then
+            return child
+        end
+        local found = findFirstChildOfType(child, className)
+        if found then
+            return found
+        end
+    end
+end
+
+local function findFirstMatchingAttachment(model, name)
+    for _, child in pairs(model:GetChildren()) do
+        if child:IsA("Attachment") and child.Name == name then
+            return child
+        elseif not child:IsA("Accoutrement") and not child:IsA("Tool") then
+            local found = findFirstMatchingAttachment(child, name)
+            if found then
+                return found
+            end
+        end
+    end
+end
+
+local function buildWeld(part0, part1, c0, c1, name)
+    local weld = Instance.new("Weld")
+    weld.C0 = c0
+    weld.C1 = c1
+    weld.Part0 = part0
+    weld.Part1 = part1
+    weld.Name = name
+    weld.Parent = part0
+end
+
+local function addAssetToCharacter(Player, item, assetType)
+    local character = Player.Character
+    local handle = item:FindFirstChild("Handle")
+    local attachment = handle and findFirstChildOfType(handle, "Attachment")
+    local matchingAttachment = attachment and findFirstMatchingAttachment(character, attachment.Name)
+    item.Parent = character
+
+    if not handle then
+        return
+    end
+
+    handle.CanCollide = false
+    if matchingAttachment then
+        local targetPart = matchingAttachment.Parent
+        handle.CFrame = targetPart.CFrame * matchingAttachment.CFrame * attachment.CFrame:inverse()
+        buildWeld(handle, matchingAttachment.Parent, attachment.CFrame, matchingAttachment.CFrame, "AccessoryWeld")
+    elseif item:IsA("Accoutrement") or assetType == 8 or assetType == 41 or assetType == 42 then
+        local head = character:FindFirstChild("Head")
+        if head then
+            local headAttachment = CFrame.new(0, head.Size.Y / 2, 0)
+            local attachmentPoint = item:IsA("Accoutrement") and item.AttachmentPoint or CFrame.new()
+            if attachment then
+                handle.CFrame = head.CFrame * headAttachment * attachment.CFrame:inverse()
+                buildWeld(handle, head, attachment.CFrame, headAttachment, "AccessoryWeld")
+            else
+                handle.CFrame = head.CFrame * headAttachment * attachmentPoint:inverse()
+                buildWeld(handle, head, attachmentPoint, headAttachment, "AccessoryWeld")
+            end
+        end
+    end
+end
+
+local function addLoadedItemToCharacter(Player, item, assetType)
+    if assetType == 18 and item:IsA("Decal") then
+        local head = Player.Character:FindFirstChild("Head")
+        if head then
+            local face = head:FindFirstChild("face")
+            if face then
+                face:Destroy()
+            end
+            item.Name = "face"
+            item.Parent = head
+        end
+        return
+    end
+
+    if item:IsA("Accoutrement") or item:IsA("Tool") or item:IsA("Shirt") or
+        item:IsA("Pants") or item:IsA("ShirtGraphic") then
+        addAssetToCharacter(Player, item, assetType)
+        return
+    end
+
+    for _, child in pairs(item:GetChildren()) do
+        addLoadedItemToCharacter(Player, child, assetType)
+    end
+end
+
 local function FindFirstChildWhichIsA(inst, className)
     for _, asset in pairs(inst:GetChildren()) do
         if asset.ClassName == className then
@@ -60,15 +152,45 @@ end
     HttpService.HttpEnabled = true
     ScriptContext.ScriptsDisabled = true
     Lighting.Outlines = false
-    ContentProvider:SetBaseUrl('http://economy-simulator.org')
-    game:GetService("ContentProvider"):SetAssetUrl(baseURL .. "/Asset/")
-    game:GetService("InsertService"):SetAssetUrl(baseURL .. "/Asset/?id=%d")
-    pcall(function() game:GetService("ScriptInformationProvider"):SetAssetUrl(url .. "/Asset/") end)
-    game:GetService("ContentProvider"):SetBaseUrl(baseURL .. "/")
+    ContentProvider:SetBaseUrl("RCC_CONTENT_BASE_URL")
+    game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
+    game:GetService("ContentProvider"):SetBaseUrl("RCC_CONTENT_BASE_URL")
     game:GetService("Players"):SetChatFilterUrl(baseURL .. "/Game/ChatFilter.ashx")
     local Insert = game:GetService("InsertService")
-    game:GetService("InsertService"):SetAssetUrl(baseURL .. "/Asset/?id=%d")
-	game:GetService("InsertService"):SetAssetVersionUrl(baseURL .. "/Asset/?assetversionid=%d")
+    game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
+    game:GetService("InsertService"):SetAssetVersionUrl(baseURL .. "/Asset/?assetversionid=%d")
+
+    local function rewriteContentUrl(url)
+        if type(url) ~= "string" then
+            return url
+        end
+        local assetId = string.match(url, "[?&]id=(%d+)")
+        if assetId then
+            return "RCC_ASSET_PREFIX" .. assetId
+        end
+        return url
+    end
+
+    local function redirectAssetContent(item)
+        if item:IsA("SpecialMesh") then
+            item.MeshId = rewriteContentUrl(item.MeshId)
+            item.TextureId = rewriteContentUrl(item.TextureId)
+        elseif item:IsA("MeshPart") then
+            item.MeshId = rewriteContentUrl(item.MeshId)
+        elseif item:IsA("Decal") or item:IsA("Texture") then
+            item.Texture = rewriteContentUrl(item.Texture)
+        elseif item:IsA("Shirt") then
+            item.ShirtTemplate = rewriteContentUrl(item.ShirtTemplate)
+        elseif item:IsA("Pants") then
+            item.PantsTemplate = rewriteContentUrl(item.PantsTemplate)
+        elseif item:IsA("ShirtGraphic") then
+            item.Graphic = rewriteContentUrl(item.Graphic)
+        end
+
+        for _, child in pairs(item:GetChildren()) do
+            redirectAssetContent(child)
+        end
+    end
 
     local function render(id)
         -- game.StarterPlayer.GameSettingsAvatarType = Enum.GameAvatarType.R15
@@ -77,19 +199,13 @@ end
         -- this returns data in an identical format to https://avatar.roblox.com/v1/users/1/avatar
         local av = HttpService:JSONDecode('JSON_AVATAR')
         -- Player.Character['Right Leg']:Destroy()
-        local done = 0
         for _, asset in pairs(av.assets) do
             print('[debug] add',asset.name,'to char')
-            coroutine.wrap(function()
-                local ok, Asset = pcall(function()
-                    return Insert:LoadAsset(asset.id)
-                end)
-                if ok == false then
-                    done = done + 1;
-                    return
-                end
-                local children = Asset:GetChildren()
-                
+            local ok, err = pcall(function()
+                local loadedAsset = Insert:LoadAsset(asset.id)
+                redirectAssetContent(loadedAsset)
+                local children = loadedAsset:GetChildren()
+
                 if asset.assetType.id == 17 then
                     applyMesh(Player, children, "Head")
                 end
@@ -97,27 +213,15 @@ end
                     applyPackage(Player, children)
                 else
                     for _, item in pairs(children) do
-                        print('[debug] add ',asset.Name, '/', item.Name,'to char')
-                        if asset.assetType.id == 31 then
-                            print('[debug] Got right leg cl is',item.ClassName)
-                        end
-                        if asset.assetType.id == 18 then
-                            local head = Player.Character.Head
-                            if head:FindFirstChild("face") ~= nil then
-                                head.face:Destroy()
-                            end
-                            item.Name = "face"
-                            item.Parent = head
-                        else
-                            item.Parent = Player.Character
-                        end
+                        print('[debug] add ',asset.name,'/',item.Name,'to char')
+                        addLoadedItemToCharacter(Player, item, asset.assetType.id)
                     end
                 end
-
-                done = done + 1;
-            end)()
+            end)
+            if not ok then
+                print("[error] failed to apply avatar asset", asset.id, err)
+            end
         end
-        repeat wait() until done == #av.assets
         local bc = av.bodyColors;
         local colors = {
             ['Head']      = bc.headColorId,

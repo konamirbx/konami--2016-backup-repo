@@ -15,16 +15,21 @@ game:GetService('ThumbnailGenerator').GraphicsMode = 2;
 HttpService.HttpEnabled = true;
 ScriptContext.ScriptsDisabled = true
 Lighting.Outlines = false
-ContentProvider:SetBaseUrl('http://economy-simulator.org')
+ContentProvider:SetBaseUrl("RCC_CONTENT_BASE_URL")
 print(ContentProvider.BaseUrl)
-game:GetService("ContentProvider"):SetAssetUrl(baseURL .. "/Asset/")
-game:GetService("InsertService"):SetAssetUrl(baseURL .. "/Asset/?id=%d")
-pcall(function() game:GetService("ScriptInformationProvider"):SetAssetUrl(url .. "/Asset/") end)
-game:GetService("ContentProvider"):SetBaseUrl(baseURL .. "/")
+game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
 Players:SetChatFilterUrl(baseURL .. "/Game/ChatFilter.ashx")
 local Insert = game:GetService("InsertService")
-game:GetService("InsertService"):SetAssetUrl(baseURL .. "/Asset/?id=%d")
+game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
 game:GetService("InsertService"):SetAssetVersionUrl(baseURL .. "/Asset/?assetversionid=%d")
+
+local function rewriteContentUrl(url)
+    if type(url) ~= "string" then
+        return url
+    end
+    local id = string.match(url, "[?&]id=(%d+)")
+    return id and "RCC_ASSET_PREFIX" .. id or url
+end
 
 local function applyMesh(children, part)
     local ok, msg = pcall(function() 
@@ -72,6 +77,8 @@ print("passed inserts")
             end
 
             local partForMesh = headPart
+            actualMesh.MeshId = rewriteContentUrl(actualMesh.MeshId)
+            actualMesh.TextureId = rewriteContentUrl(actualMesh.TextureId)
             actualMesh.Parent = headPart
 
             if actualMesh.MeshId == "http://www.roblox.com/asset/?id=134079402" then

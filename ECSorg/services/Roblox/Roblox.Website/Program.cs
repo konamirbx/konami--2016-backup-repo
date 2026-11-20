@@ -76,10 +76,7 @@ Roblox.Configuration.RobloxAppPrefix = "rbxeconsimdev:";
 #endif
 FeatureFlags.StartUpdateFlagTask();
 Roblox.Website.Filters.StaffFilter.Configure(long.Parse(configuration.GetSection("OwnerUserId").Value));
-if (!string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase))
-{
-    Roblox.Website.Controllers.ThumbnailsControllerV1.StartThumbnailFixLoop();
-}
+Roblox.Website.Controllers.ThumbnailsControllerV1.StartThumbnailFixLoop();
 
 // Add services to the container.
 builder.Services.AddRazorPages();

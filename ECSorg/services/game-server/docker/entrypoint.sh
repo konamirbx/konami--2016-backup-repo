@@ -22,5 +22,9 @@ export LIBGL_ALWAYS_SOFTWARE=1
 export GALLIUM_DRIVER=llvmpipe
 Xvfb "$DISPLAY" -screen 0 1600x1200x24+32 &
 wineboot --init
+wine_hosts="$WINEPREFIX/drive_c/windows/system32/drivers/etc/hosts"
+if ! grep -Eq '(^|[[:space:]])www\.roblox\.com([[:space:]]|$)' "$wine_hosts"; then
+  printf '\n127.0.0.1 www.roblox.com\n' >> "$wine_hosts"
+fi
 
 exec npm run start

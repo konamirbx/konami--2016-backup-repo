@@ -19,8 +19,9 @@ COPY --from=website-build /src/Roblox/Roblox.Website/game-servers.json ./game-se
 COPY --from=website-build /src/Roblox/Roblox.Website/UnsecuredContent/ ./UnsecuredContent/
 COPY --from=website-build /src/Roblox/Roblox.Libraries/Templates/ ./templates/
 COPY --from=website-build /src/Roblox/Roblox.Libraries/Json/ ./json/
+COPY api/public/Baseplate.rbxl ./Baseplate.rbxl
 COPY --from=admin-build /src/admin/public/ ./admin/
 RUN mkdir -p /data/storage/asset /data/public/images/thumbnails /data/public/images/groups /data/public/UnsecuredContent /app/economy-chat
 ENV ASPNETCORE_URLS=http://0.0.0.0:5000
 EXPOSE 5000
-ENTRYPOINT ["dotnet", "Roblox.Website.dll"]
+ENTRYPOINT ["sh", "-c", "if [ ! -f /data/public/Baseplate.rbxl ]; then cp /app/Baseplate.rbxl /data/public/Baseplate.rbxl; fi; exec dotnet Roblox.Website.dll"]

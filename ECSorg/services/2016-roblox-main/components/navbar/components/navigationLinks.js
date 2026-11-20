@@ -47,12 +47,11 @@ const useStyles = createUseStyles({
 
 const LinkEntry = props => {
   const s = useStyles();
+  const link = <a className={`${s.linkEntry} nav-link active pt-0`} href={`/${props.url}`}>
+    {props.children}
+  </a>;
   return <div className='col-3'>
-    <Link href={`/${props.url}`}>
-      <a className={`${s.linkEntry} nav-link active pt-0`}>
-        {props.children}
-      </a>
-    </Link>
+    {props.fullPageNavigation ? link : <Link href={`/${props.url}`}>{link}</Link>}
   </div>
 }
 
@@ -64,7 +63,7 @@ const NavigationLinks = props => {
         <LinkEntry url='games'>Games</LinkEntry>
         <LinkEntry url='catalog'>Catalog</LinkEntry>
         <LinkEntry url='develop'>Develop</LinkEntry>
-        <LinkEntry url='robux.aspx'>ROBUX</LinkEntry>
+        <LinkEntry url='404' fullPageNavigation>ROBUX</LinkEntry>
       </div>
     </div>
   </div>

@@ -114,6 +114,9 @@ services:
     build:
       context: ./game-server
       dockerfile: Dockerfile
+    extra_hosts:
+      - "rcc.robloxlabs.com:127.0.0.1"
+      - "www.roblox.com:127.0.0.1"
     ports:
       - "3040:3040"
       - "3189:3189"

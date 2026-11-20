@@ -15,15 +15,12 @@ game:GetService('ThumbnailGenerator').GraphicsMode = 2;
 HttpService.HttpEnabled = true;
 ScriptContext.ScriptsDisabled = true
 Lighting.Outlines = false
-ContentProvider:SetBaseUrl('https://economy-simulator.org')
+ContentProvider:SetBaseUrl("RCC_CONTENT_BASE_URL")
 print(ContentProvider.BaseUrl)
-game:GetService("ContentProvider"):SetAssetUrl(baseURL .. "/asset/")
-game:GetService("InsertService"):SetAssetUrl(baseURL .. "/asset/?id=%d")
-pcall(function() game:GetService("ScriptInformationProvider"):SetAssetUrl(url .. "/asset/") end)
-game:GetService("ContentProvider"):SetBaseUrl(baseURL .. "/")
+game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
 Players:SetChatFilterUrl(baseURL .. "/Game/ChatFilter.ashx")
 local Insert = game:GetService("InsertService")
-game:GetService("InsertService"):SetAssetUrl(baseURL .. "/asset/?id=%d")
+game:GetService("InsertService"):SetAssetUrl("RCC_INSERT_ASSET_URL")
 game:GetService("InsertService"):SetAssetVersionUrl(baseURL .. "/asset/?assetversionid=%d")
 
 -- not having this leads to some weird issues, i don't really know why
@@ -36,7 +33,7 @@ end
         local MeshPartContainer = Instance.new("Part");
         local assetId = assetId[1];
         local renderMeshExample = Instance.new("FileMesh", MeshPartContainer);
-        renderMeshExample.MeshId = concat(baseURL, "/asset/?id=", tostring(assetId));
+        renderMeshExample.MeshId = concat("RCC_ASSET_PREFIX", tostring(assetId));
 
 
         local charModel = Instance.new("Model", game.Workspace);

@@ -15,66 +15,105 @@ game:GetService('ThumbnailGenerator').GraphicsMode = 2;
 HttpService.HttpEnabled = true;
 ScriptContext.ScriptsDisabled = true
 Lighting.Outlines = false
-ContentProvider:SetBaseUrl('http://economy-simulator.org')
+ContentProvider:SetBaseUrl("RCC_CONTENT_BASE_URL")
+local Insert = game:GetService("InsertService")
+Insert:SetAssetUrl("RCC_INSERT_ASSET_URL")
+
+local function rewriteContentUrl(url)
+    if type(url) ~= "string" then
+        return url
+    end
+    local id = string.match(url, "[?&]id=(%d+)")
+    return id and "RCC_ASSET_PREFIX" .. id or url
+end
+
+local function redirectAssetContent(item)
+    if item:IsA("SpecialMesh") then
+        item.MeshId = rewriteContentUrl(item.MeshId)
+        item.TextureId = rewriteContentUrl(item.TextureId)
+    elseif item:IsA("MeshPart") then
+        item.MeshId = rewriteContentUrl(item.MeshId)
+    elseif item:IsA("Decal") or item:IsA("Texture") then
+        item.Texture = rewriteContentUrl(item.Texture)
+    elseif item:IsA("Shirt") then
+        item.ShirtTemplate = rewriteContentUrl(item.ShirtTemplate)
+    elseif item:IsA("Pants") then
+        item.PantsTemplate = rewriteContentUrl(item.PantsTemplate)
+    elseif item:IsA("ShirtGraphic") then
+        item.Graphic = rewriteContentUrl(item.Graphic)
+    end
+
+    for _, child in pairs(item:GetChildren()) do
+        redirectAssetContent(child)
+    end
+end
+
+local function findAssetComponent(item, predicate)
+    if predicate(item) then
+        return item
+    end
+    for _, child in pairs(item:GetChildren()) do
+        local found = findAssetComponent(child, predicate)
+        if found then
+            return found
+        end
+    end
+end
 
     local function render()
         local model = Instance.new("Model");
-        for _, assetId in pairs(assetId) do
-            local asset = game:GetService("InsertService"):LoadAsset(assetId)
+        local assetIds = assetId
+        local renderTarget
+        for _, id in pairs(assetIds) do
+            local asset = Insert:LoadAsset(id)
+            redirectAssetContent(asset)
             for _, child in pairs(asset:GetChildren()) do
                 child.Parent = model;
+                local found = findAssetComponent(child, function(item)
+                    return item:IsA("Accessory") or item:IsA("Accoutrement") or item:IsA("Tool") or item:IsA("Hat")
+                end)
+                if found then
+                    renderTarget = found
+                end
             end
         end
         model.Parent = game.Workspace
-        
-        local assetModel
 
-        -- get assetmodel
-
-        for i,v in pairs(model:GetChildren()) do
-            if v:IsA("Accessory") or v:IsA("Tool") or v:IsA("Hat") then
-                assetModel = v
-            end
+        if not renderTarget then
+            error("Asset contains no accessory, tool, or hat to frame")
         end
 
-        -- check for thumbnailcamera
-
-        if assetModel:FindFirstChild("ThumbnailCamera") then
+        local camera = findAssetComponent(renderTarget, function(item)
+            return item:IsA("Camera") and item.Name == "ThumbnailCamera"
+        end)
+        if camera then
             print("Has ThumbnailCamera, now using it")
-            camera = assetModel:WaitForChild("ThumbnailCamera")
-            camera.Parent = model
         else
-            camera = Instance.new("Camera", model)-- Instance.new("Camera", player.Character)
+            camera = Instance.new("Camera")
         end
-
-        -- set the cam
-
-
-        workspace.CurrentCamera = camera
+        camera.Parent = game.Workspace
+        game.Workspace.CurrentCamera = camera
 
         print("[debug] render test asset")
-        -- We render twice to correct some weird bugs when rendering assets specifically - meshes only seem to load after the second attempt(?)
-        -- ideally this should be done with ContentProvider:PreloadAsync() or even on the C++ side, but that would just take a while to implement.
-        -- realistically, Click() is fast enough to be called twice without affecting performance much.
-        ThumbnailGenerator:Click('png', 1, 1, true, false)
-        -- "fileType", "width", "height", "hideSky", "doCameraZoom"
-        local encoded = ThumbnailGenerator:Click('png', _X_RES_, _Y_RES_, true, true)
-        print("[debug] send post request containing test asset")
-
-        local ok, data = pcall(function()
-            return HttpService:PostAsync(uploadURL, HttpService:JSONEncode({
-                ['type'] = 'Asset',
-                ['assetId'] = assetId,
-                ['thumbnail'] = encoded,
-                ['accessKey'] = "AccessKey",
-                ['jobId'] = jobId,
-            }), Enum.HttpContentType.TextPlain)
-        end)
-        print("[debug] post over",ok,data)
+        return ThumbnailGenerator:Click('png', _X_RES_, _Y_RES_, true, true)
     end
 
-    local ok, data = pcall(function()
+    local ok, result = pcall(function()
         return render()
     end)
-    print(ok, data);
+    if not ok then
+        print("[error] asset thumbnail render failed", result)
+    end
+    print("[debug] send post request containing test asset")
+    local postOk, postResult = pcall(function()
+        return HttpService:PostAsync(uploadURL, HttpService:JSONEncode({
+            ['type'] = 'Asset',
+            ['assetId'] = assetId[1],
+            ['thumbnail'] = ok and result or nil,
+            ['debug'] = ok and "" or tostring(result),
+            ['accessKey'] = "AccessKey",
+            ['jobId'] = jobId,
+        }), Enum.HttpContentType.TextPlain)
+    end)
+    print("[debug] post over", postOk, postResult)
     print("[debug] exit asset render game");

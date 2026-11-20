@@ -60,6 +60,12 @@ export const getResult = (key: string, upscaleAmount: number): Promise<any> => {
 				rej(error);
 				return;
 			}
+			if (typeof data?.thumbnail !== 'string' || data.thumbnail.length === 0) {
+				rej(new Error(typeof data?.debug === 'string' && data.debug
+					? data.debug
+					: 'Renderer returned no thumbnail'));
+				return;
+			}
 			if (typeof data.thumbnail === 'string') {
 				if (!shutdownTimer) {
 					console.log('[info] creating shutdown timer');

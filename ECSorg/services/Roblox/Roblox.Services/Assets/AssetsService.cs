@@ -549,15 +549,6 @@ public class AssetsService : ServiceBase, IService
         await InsertOrReplaceIcon(assetId, key, ModerationStatus.AwaitingApproval);
     }
 
-    private async Task CreateTeeShirtThumbnail(long assetId, CancellationToken? cancellationToken = null)
-    {
-        var latestVersion = await GetLatestAssetVersion(assetId);
-        var thumbnailToUse = await Rendering.CommandHandler.RequestAssetTeeShirt(assetId, latestVersion.contentId, cancellationToken);
-        var key = await UploadAssetContent(thumbnailToUse, Configuration.ThumbnailsDirectory, "png");
-        await InsertOrReplaceThumbnail(assetId, latestVersion.assetVersionId, key,
-            ModerationStatus.AwaitingApproval);
-    }
-
     private async Task CreateRawImageThumbnail(long assetId, CancellationToken? cancellationToken = null)
     {
         var latestVersion = await GetLatestAssetVersion(assetId);
@@ -699,6 +690,9 @@ public class AssetsService : ServiceBase, IService
             case Models.Assets.Type.Pants:
                  thumbRequests.Add(CreateClothingThumbnail(assetId, assetType, cancellationToken));
                  break;
+            case Models.Assets.Type.TeeShirt:
+                thumbRequests.Add(CreateClothingThumbnail(assetId, assetType, cancellationToken));
+                break;
             // package stuff
             case Type.Head:
                  thumbRequests.Add(CreateHeadThumbnail(assetId, cancellationToken));
@@ -712,9 +706,6 @@ public class AssetsService : ServiceBase, IService
                 break;
             case Models.Assets.Type.Package:
                 thumbRequests.Add(CreatePackageThumbnail(assetId, cancellationToken));
-                break;
-            case Models.Assets.Type.TeeShirt:
-                thumbRequests.Add(CreateTeeShirtThumbnail(assetId, cancellationToken));
                 break;
             // items without custom icons
             case Models.Assets.Type.Animation:
@@ -765,19 +756,27 @@ public class AssetsService : ServiceBase, IService
 
         try
         {
-            Console.WriteLine("Start multi render");
-            //await Task.WhenAll(thumbRequests);
-            Console.WriteLine("End multi render");
+            await Task.WhenAll(thumbRequests);
         }
         catch (System.Exception e)
         {
-            Console.WriteLine("[error] Render failed for {0}:{1}: {2}", assetId, assetType, e.Message);
+            Writer.Info(LogGroup.AssetRender, "Render failed for {0}:{1}: {2}\n{3}", assetId, assetType, e.Message, e.StackTrace);
         }
     }
 
     public void RenderAsset(long assetId, Models.Assets.Type assetType)
     {
-        Task.Run(async () => { await RenderAssetAsync(assetId, assetType); });
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await RenderAssetAsync(assetId, assetType);
+            }
+            catch (Exception e)
+            {
+                Writer.Info(LogGroup.AssetRender, "Background render failed for {0}:{1}: {2}\n{3}", assetId, assetType, e.Message, e.StackTrace);
+            }
+        });
     }
 
     public async Task<CreateResponse> CreateAssetVersion(long assetId, long creatorUserId, long contentId)

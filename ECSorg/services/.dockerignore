@@ -1,4 +1,5 @@
-api/public
+api/public/*
+!api/public/Baseplate.rbxl
 api/storage
 api/node_modules
 Roblox/**/bin

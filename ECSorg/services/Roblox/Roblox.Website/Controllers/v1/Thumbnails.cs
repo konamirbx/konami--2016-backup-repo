@@ -17,10 +17,6 @@ public class ThumbnailsControllerV1 : ControllerBase
 {
     public static void StartThumbnailFixLoop()
     {
-        // this thing is annoying in debug
-#if DEBUG
-        return;
-#endif
         Task.Run(async () =>
         {
             while (true)
@@ -111,7 +107,6 @@ public class ThumbnailsControllerV1 : ControllerBase
         Writer.Info(LogGroup.FixBrokenThumbnails, "Fixing {0} broken thumbnails", itemsToFix.Count);
         foreach (var item in itemsToFix)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5)); // pace ourselves since repairing thumbs isn't as important as rendering new ones
             using var cancellation = new CancellationTokenSource();
             cancellation.CancelAfter(TimeSpan.FromMinutes(2));
             Writer.Info(LogGroup.FixBrokenThumbnails, "Fixing asset {0}:{1}", item.assetId, item.assetType);
