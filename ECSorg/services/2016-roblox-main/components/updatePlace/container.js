@@ -4,6 +4,7 @@ import VerticalSelector from "../verticalSelector";
 import BasicSettings from "./components/basicSettings";
 import {multiGetPlaceDetails} from "../../services/games";
 import Icon from "./components/icon";
+import Thumbnails from "./components/thumbnails";
 import UploadPlace from "./components/uploadPlace";
 import Access from "./components/access";
 
@@ -42,8 +43,8 @@ const Container = props => {
     {
       name: 'Thumbnails',
       url: '#',
-      disabled: true,
-      el: () => null,
+      disabled: false,
+      el: () => <Thumbnails />,
     },
     {
       name: 'Access',

@@ -282,8 +282,24 @@ public class GamesService : ServiceBase, IService
     public async Task<IEnumerable<GameMediaEntry>> GetGameMedia(long placeId)
     {
         return await db.QueryAsync<GameMediaEntry>(
-            "SELECT asset_type as assetTypeId, media_asset_id as imageId, media_video_hash as videoHash, media_video_title as videoTitle, is_approved as isApproved FROM asset_media WHERE asset_id = :id",
-            new {id = placeId});
+            "SELECT asset_media.asset_type as assetType, asset_media.media_asset_id as imageId, asset_media.media_video_hash as videoHash, asset_media.media_video_title as videoTitle, CASE WHEN asset_media.asset_type = :imageType THEN asset.moderation_status = :approvedStatus ELSE asset_media.is_approved END as approved FROM asset_media LEFT JOIN asset ON asset.id = asset_media.media_asset_id WHERE asset_media.asset_id = :id",
+            new
+            {
+                id = placeId,
+                imageType = Type.Image,
+                approvedStatus = ModerationStatus.ReviewApproved,
+            });
+    }
+
+    public async Task AddGameImageMedia(long placeId, long imageAssetId)
+    {
+        await InsertAsync("asset_media", new
+        {
+            asset_type = Type.Image,
+            asset_id = placeId,
+            media_asset_id = imageAssetId,
+            is_approved = false,
+        });
     }
 
     public async Task<CreateUniverseResponse> CreateUniverse(long rootPlaceId)

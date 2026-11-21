@@ -38,7 +38,7 @@ const GameThumbnails = props => {
       return;
 
     getGameMedia({universeId: store.universeDetails.id}).then(media => {
-      const images = media.filter(v => v.assetType === 'Image');
+      const images = media.filter(v => (v.assetType === 1 || v.assetType === 'Image') && v.approved);
       if (images.length) {
         multiGetAssetThumbnails({assetIds: images.map(v => v.imageId)}).then(thumb => {
           // Default to first thumbnail

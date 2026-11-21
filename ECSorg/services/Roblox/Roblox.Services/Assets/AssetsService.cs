@@ -20,6 +20,7 @@ using Roblox.Services.App.FeatureFlags;
 using Roblox.Services.DbModels;
 using Roblox.Services.Exceptions;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 using AssetId = Roblox.Dto.Assets.AssetId;
 using MultiGetEntry = Roblox.Dto.Assets.MultiGetEntry;
 using Type = Roblox.Models.Assets.Type;
@@ -547,6 +548,19 @@ public class AssetsService : ServiceBase, IService
 
         var key = await UploadAssetContent(thumbnailToUse, Configuration.ThumbnailsDirectory, "png");
         await InsertOrReplaceIcon(assetId, key, ModerationStatus.AwaitingApproval);
+    }
+
+    public async Task SetGameIconFromStream(long placeId, Stream iconContent)
+    {
+        using var image = await Image.LoadAsync(iconContent);
+        image.Mutate(context => context.Resize(420, 420));
+        await using var png = new MemoryStream();
+        await image.SaveAsPngAsync(png);
+        if (png.Length > 5 * 1024 * 1024)
+            throw new ArgumentException("The processed game icon is too large.");
+
+        png.Position = 0;
+        await CreateGameIcon(placeId, png);
     }
 
     private async Task CreateRawImageThumbnail(long assetId, CancellationToken? cancellationToken = null)

@@ -4,7 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Roblox.Dto.Games;
 using Roblox.Exceptions;
 using Roblox.Models.Assets;
+using Roblox.Models.Groups;
+using Roblox.Services.App.FeatureFlags;
 using Roblox.Services.Exceptions;
+using Type = Roblox.Models.Assets.Type;
 
 namespace Roblox.Website.Controllers;
 
@@ -12,6 +15,26 @@ namespace Roblox.Website.Controllers;
 [Route("/apisite/games/v1")]
 public class GamesControllerV1 : ControllerBase
 {
+    private async Task<Roblox.Dto.Games.MultiGetUniverseEntry> GetEditableUniverse(long universeId)
+    {
+        var universe = (await services.games.MultiGetUniverseInfo(new[] {universeId})).FirstOrDefault();
+        if (universe == null)
+            throw new RecordNotFoundException();
+
+        if (universe.creatorType == CreatorType.User)
+        {
+            if (universe.creatorId != safeUserSession.userId)
+                throw new ForbiddenException();
+        }
+        else if (!await services.groups.DoesUserHavePermission(safeUserSession.userId, universe.creatorId,
+                     GroupPermission.ManageGroupGames))
+        {
+            throw new ForbiddenException();
+        }
+
+        return universe;
+    }
+
     [HttpGet("games")]
     public async Task<dynamic> MultiGetUniverseInfo(string universeIds)
     {
@@ -189,6 +212,52 @@ public class GamesControllerV1 : ControllerBase
         {
             data = result,
         };
+    }
+
+    [HttpPost("games/{universeId:long}/icon")]
+    public async Task SetGameIcon(long universeId, [Required, FromForm] IFormFile file)
+    {
+        FeatureFlags.FeatureCheck(FeatureFlag.UploadContentEnabled);
+        if (file.Length == 0 || file.Length > 10 * 1024 * 1024)
+            throw new BadRequestException(0, "The image must be smaller than 10 MB.");
+
+        var universe = await GetEditableUniverse(universeId);
+        await using var stream = file.OpenReadStream();
+        if (await services.assets.ValidateImage(stream) == null)
+            throw new BadRequestException(0, "Upload a PNG or JPEG image.");
+
+        stream.Position = 0;
+        await services.assets.SetGameIconFromStream(universe.rootPlaceId, stream);
+    }
+
+    [HttpPost("games/{universeId:long}/media")]
+    public async Task AddGameThumbnail(long universeId, [Required, FromForm] IFormFile file)
+    {
+        FeatureFlags.FeatureCheck(FeatureFlag.UploadContentEnabled);
+        if (file.Length == 0 || file.Length > 10 * 1024 * 1024)
+            throw new BadRequestException(0, "The image must be smaller than 10 MB.");
+
+        var universe = await GetEditableUniverse(universeId);
+        var imageCount = (await services.games.GetGameMedia(universe.rootPlaceId))
+            .Count(media => media.assetType == Type.Image);
+        if (imageCount >= 10)
+            throw new BadRequestException(0, "A game can have up to 10 thumbnails.");
+
+        await using var stream = file.OpenReadStream();
+        var imageInfo = await services.assets.ValidateImage(stream);
+        if (imageInfo == null)
+            throw new BadRequestException(0, "Upload a PNG or JPEG image.");
+
+        stream.Position = 0;
+        var creatorType = universe.creatorType;
+        var imageAsset = await services.assets.CreateAsset("Game Thumbnail", "Game thumbnail",
+            safeUserSession.userId, creatorType, universe.creatorId, stream, Type.Image, Genre.All,
+            ModerationStatus.AwaitingApproval);
+        stream.Position = 0;
+        await services.assets.InsertOrUpdateAssetVersionMetadataImage(imageAsset.assetVersionId,
+            (int)stream.Length, imageInfo.width, imageInfo.height, imageInfo.imageFormat,
+            await services.assets.GenerateImageHash(stream));
+        await services.games.AddGameImageMedia(universe.rootPlaceId, imageAsset.assetId);
     }
 
     [HttpPatch("games/{universeId:long}/user-votes")]

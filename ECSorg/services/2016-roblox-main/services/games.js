@@ -28,6 +28,18 @@ export const getGameMedia = ({ universeId }) => {
   return request('GET', getFullUrl('games', `/v2/games/${universeId}/media`)).then(d => d.data.data);
 }
 
+export const uploadGameIcon = ({ universeId, file }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request('POST', getFullUrl('games', `/v1/games/${universeId}/icon`), formData);
+}
+
+export const uploadGameThumbnail = ({ universeId, file }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request('POST', getFullUrl('games', `/v1/games/${universeId}/media`), formData);
+}
+
 export const launchGame = async ({ placeId }) => {
   const result = await request('GET', getBaseUrl() + '/game/get-join-script?placeId=' + encodeURIComponent(placeId));
   const toClick = result.data.joinUrl;
