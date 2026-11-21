@@ -103,7 +103,7 @@ const CreateUserAd = props => {
             targetId: props.targetId,
             type: props.targetType,
           }).then(() => {
-            window.location.href = '/develop?View=8';
+            window.location.href = '/develop?View=101';
           }).catch(e => {
             setLocked(false);
             setFeedback('Could not upload advertisement. ' + (!e.response ? 'If you have an ad blocker enabled, you may have to temporarily disable it.' : 'Error Message: ' + (e.response.data?.errors[0]?.message || e.message)));
