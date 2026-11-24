@@ -545,6 +545,7 @@ public class AvatarService : ServiceBase, IService
         var assetsOk = await ConfirmAssetSelectionIsOkForRender(assetIds);
         if (!assetsOk)
             throw new RobloxException(400, 0, "One or more assets are invalid");
+        var previousAvatarImages = await GetAvatar(userId);
         // Now, update the avatar. This returns a hash
         var avatarHash = await UpdateUserAvatar(userId, colors, assetIds);
         // Get our image urls
@@ -562,59 +563,62 @@ public class AvatarService : ServiceBase, IService
             }
         }
 
-        // We have to call render library now.
-        // Set image urls to null:
         await UpdateUserAvatarImages(userId, null, null);
-        // Create request
-        var extendedAssetDetails = await assets.MultiGetInfoById(assetIds);
-        var request = new Roblox.Rendering.AvatarData()
+        try
         {
-            userId = userId,
-            assets = extendedAssetDetails.Select(c => new AvatarAssetEntry()
+            var extendedAssetDetails = await assets.MultiGetInfoById(assetIds);
+            var request = new Roblox.Rendering.AvatarData()
             {
-                id = c.id,
-                assetType = new AvatarAssetTypeEntry()
+                userId = userId,
+                assets = extendedAssetDetails.Select(c => new AvatarAssetEntry()
                 {
-                    id = (int) c.assetType,
+                    id = c.id,
+                    assetType = new AvatarAssetTypeEntry()
+                    {
+                        id = (int) c.assetType,
+                    },
+                }),
+                bodyColors = new AvatarBodyColors()
+                {
+                    headColorId = colors.headColorId,
+                    torsoColorId = colors.torsoColorId,
+                    leftArmColorId = colors.leftArmColorId,
+                    rightArmColorId = colors.rightArmColorId,
+                    leftLegColorId = colors.leftLegColorId,
+                    rightLegColorId = colors.rightLegColorId,
                 },
-            }),
-            bodyColors = new AvatarBodyColors()
+                playerAvatarType = "R6",
+            };
+            // Allow time for queued work and the renderer's five-minute RCC request timeout.
+            using var cancellation = new CancellationTokenSource();
+            cancellation.CancelAfter(TimeSpan.FromMinutes(11));
+            var result = await Task.WhenAll(new List<Task<Stream>>()
             {
-                headColorId = colors.headColorId,
-                torsoColorId = colors.torsoColorId,
-                leftArmColorId = colors.leftArmColorId,
-                rightArmColorId = colors.rightArmColorId,
-                leftLegColorId = colors.leftLegColorId,
-                rightLegColorId = colors.rightLegColorId,
-            },
-            playerAvatarType = "R6",
-        };
-        // Sane timeout of 30 minutes. If a render takes longer than this, something's probably broken
-        using var cancellation = new CancellationTokenSource();
-        cancellation.CancelAfter(TimeSpan.FromSeconds(30));
-        // Make both requests at once
-        var result = await Task.WhenAll(new List<Task<Stream>>()
-        {
-            CommandHandler.RequestPlayerHeadshot(request, cancellation.Token),
-            CommandHandler.RequestPlayerThumbnail(request, cancellation.Token),
-        });
-        var headshotStream = result[0];
-        var thumbnailStream = result[1];
-        // Write the files
-        await using (var fileStream = File.Create(Configuration.PublicDirectory + headshotUrl))
-        {
-            headshotStream.Seek(0, SeekOrigin.Begin);
-            await headshotStream.CopyToAsync(fileStream);
-        }
+                CommandHandler.RequestPlayerHeadshot(request, cancellation.Token),
+                CommandHandler.RequestPlayerThumbnail(request, cancellation.Token),
+            });
+            var headshotStream = result[0];
+            var thumbnailStream = result[1];
 
-        await using (var fileStream = File.Create(Configuration.PublicDirectory + thumbnailUrl))
-        {
-            thumbnailStream.Seek(0, SeekOrigin.Begin);
-            await thumbnailStream.CopyToAsync(fileStream);
-        }
+            await using (var fileStream = File.Create(Configuration.PublicDirectory + headshotUrl))
+            {
+                headshotStream.Seek(0, SeekOrigin.Begin);
+                await headshotStream.CopyToAsync(fileStream);
+            }
 
-        // Finally, update the avatar thumbnail
-        await UpdateUserAvatarImages(userId, headshotUrl, thumbnailUrl);
+            await using (var fileStream = File.Create(Configuration.PublicDirectory + thumbnailUrl))
+            {
+                thumbnailStream.Seek(0, SeekOrigin.Begin);
+                await thumbnailStream.CopyToAsync(fileStream);
+            }
+
+            await UpdateUserAvatarImages(userId, headshotUrl, thumbnailUrl);
+        }
+        catch
+        {
+            await UpdateUserAvatarImages(userId, previousAvatarImages.headshotUrl, previousAvatarImages.thumbnailUrl);
+            throw;
+        }
     }
 
     public bool IsThreadSafe()

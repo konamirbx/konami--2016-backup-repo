@@ -20,6 +20,7 @@ using Roblox.Services.App.FeatureFlags;
 using Roblox.Services.DbModels;
 using Roblox.Services.Exceptions;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using AssetId = Roblox.Dto.Assets.AssetId;
 using MultiGetEntry = Roblox.Dto.Assets.MultiGetEntry;
@@ -465,12 +466,57 @@ public class AssetsService : ServiceBase, IService
             ModerationStatus.AwaitingApproval);
     }
 
-    private async Task CreateAssetThumbnail(long assetId, CancellationToken? cancellationToken = null)
+    private async Task CreateAssetThumbnail(long assetId, Models.Assets.Type assetType,
+        CancellationToken? cancellationToken = null)
     {
         var latestVersion = await GetLatestAssetVersion(assetId);
-        var response = await Rendering.CommandHandler.RequestAssetThumbnail(assetId, cancellationToken);
+        Stream response;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                response = await Rendering.CommandHandler.RequestAssetThumbnail(assetId, cancellationToken);
+                break;
+            }
+            catch (Exception e)
+            {
+                Writer.Info(LogGroup.AssetRender, "Render attempt {0} failed for {1}:{2}: {3}", attempt, assetId,
+                    assetType, e.Message);
+                if (attempt >= 3) throw;
+                await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken ?? CancellationToken.None);
+            }
+        }
+
+        await ValidateAssetThumbnail(response, assetId);
         var key = await UploadAssetContent(response, Configuration.ThumbnailsDirectory, "png");
         await InsertOrReplaceThumbnail(assetId, latestVersion.assetVersionId, key, ModerationStatus.ReviewApproved);
+    }
+
+    private static async Task ValidateAssetThumbnail(Stream response, long assetId)
+    {
+        response.Position = 0;
+        using var image = await Image.LoadAsync<Rgba32>(response);
+        if (image.Width < 2 || image.Height < 2)
+            throw new InvalidDataException($"Renderer returned an invalid thumbnail for asset {assetId}");
+
+        var firstPixel = image[0, 0];
+        var hasVisibleVariation = false;
+        for (var y = 0; y < image.Height && !hasVisibleVariation; y++)
+        {
+            for (var x = 0; x < image.Width; x++)
+            {
+                if (!image[x, y].Equals(firstPixel))
+                {
+                    hasVisibleVariation = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasVisibleVariation)
+            throw new InvalidDataException($"Renderer returned a blank thumbnail for asset {assetId}");
+
+        response.Position = 0;
     }
 
     private async Task CreateMeshThumbnail(long assetId, CancellationToken? cancellationToken = null)
@@ -758,7 +804,7 @@ public class AssetsService : ServiceBase, IService
             case Type.FrontAccessory:
             case Type.FaceAccessory:
             case Type.WaistAccessory:
-                thumbRequests.Add(CreateAssetThumbnail(assetId, cancellationToken));
+                thumbRequests.Add(CreateAssetThumbnail(assetId, assetType, cancellationToken));
                 break;
             default:
                 Writer.Info(LogGroup.AssetRender, "Unexpected assetType {0}", assetType);
@@ -775,6 +821,7 @@ public class AssetsService : ServiceBase, IService
         catch (System.Exception e)
         {
             Writer.Info(LogGroup.AssetRender, "Render failed for {0}:{1}: {2}\n{3}", assetId, assetType, e.Message, e.StackTrace);
+            throw;
         }
     }
 
@@ -988,7 +1035,16 @@ public class AssetsService : ServiceBase, IService
 
         if (!disableRender)
         {
-            RenderAsset(assetId, assetType);
+            if (assetType is Type.Hat or Type.Gear or Type.HairAccessory or Type.NeckAccessory or
+                Type.ShoulderAccessory or Type.BackAccessory or Type.FrontAccessory or Type.FaceAccessory or
+                Type.WaistAccessory)
+            {
+                await RenderAssetAsync(assetId, assetType);
+            }
+            else
+            {
+                RenderAsset(assetId, assetType);
+            }
         }
 
         return new CreateResponse()

@@ -38,16 +38,29 @@ public class AvatarControllerV1 : ControllerBase
             try
             {
                 using var avatarService = Roblox.Services.ServiceProvider.GetOrCreate<AvatarService>();
-                var assetIds = await cache.GetPendingAssets(userId);
-                var newColors = await cache.GetColors(userId);
-                await avatarService.RedrawAvatar(userId, assetIds, newColors, AvatarType.R6, forceRedraw);
+                while (true)
+                {
+                    var renderedVersion = cache.GetUpdateVersion(userId);
+                    try
+                    {
+                        var assetIds = await cache.GetPendingAssets(userId);
+                        var newColors = await cache.GetColors(userId);
+                        await avatarService.RedrawAvatar(userId, assetIds, newColors, AvatarType.R6, forceRedraw);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("Background render failed: {0}\n{1}", e.Message, e.StackTrace);
+                    }
+
+                    if (cache.TryCompleteRender(userId, renderedVersion))
+                        break;
+
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                }
             }
             catch (Exception e)
             {
                 Console.WriteLine("Background render failed: {0}\n{1}", e.Message, e.StackTrace);
-            }
-            finally
-            {
                 cache.UnscheduleRender(userId);
             }
         });

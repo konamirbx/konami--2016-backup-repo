@@ -10,6 +10,7 @@ local ContentProvider = game:GetService('ContentProvider');
 local HttpService = game:GetService("HttpService");
 local ThumbnailGenerator = game:GetService('ThumbnailGenerator');
 local Players = game:GetService("Players");
+game:GetService("StarterPlayer").LoadCharacterAppearance = false;
 game:GetService('StarterGui'):SetCoreGuiEnabled(Enum.CoreGuiType.All, false);
 game:GetService('ThumbnailGenerator').GraphicsMode = 2;
 HttpService.HttpEnabled = true;
@@ -24,7 +25,7 @@ local function rewriteContentUrl(url)
     if type(url) ~= "string" then
         return url
     end
-    local assetId = string.match(url, "[?&]id=(%d+)")
+    local assetId = string.match(url, "^rbxassetid://(%d+)$") or string.match(url, "[?&]id=(%d+)")
     if assetId then
         return "RCC_ASSET_PREFIX" .. assetId
     end

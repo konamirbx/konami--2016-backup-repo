@@ -152,18 +152,18 @@ const Color = props => {
           name: 'Torso',
         });
       }}>
-        <div className={s.leftArm} style={{ backgroundColor: idToHex(store.colors.leftArmColorId) }} onClick={(e) => {
-          e.stopPropagation();
-          setColorMode({
-            id: 'leftArmColorId',
-            name: 'Left Arm',
-          });
-        }}/>
-        <div className={s.rightArm} style={{ backgroundColor: idToHex(store.colors.rightArmColorId) }} onClick={(e) => {
+        <div className={s.leftArm} style={{ backgroundColor: idToHex(store.colors.rightArmColorId) }} onClick={(e) => {
           e.stopPropagation();
           setColorMode({
             id: 'rightArmColorId',
             name: 'Right Arm',
+          });
+        }}/>
+        <div className={s.rightArm} style={{ backgroundColor: idToHex(store.colors.leftArmColorId) }} onClick={(e) => {
+          e.stopPropagation();
+          setColorMode({
+            id: 'leftArmColorId',
+            name: 'Left Arm',
           });
         }}/>
       </div>

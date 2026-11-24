@@ -12,6 +12,7 @@ namespace Roblox.Rendering
         public string id { get; set; }
         public T? data { get; set; }
         public int status { get; set; }
+        public string? code { get; set; }
     }
 
     public class AvatarBodyColors

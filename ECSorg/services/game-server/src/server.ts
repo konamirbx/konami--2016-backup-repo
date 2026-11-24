@@ -13,14 +13,14 @@ const ws = new WSLib.Server({
 	port: conf.thumbnailWebsocketPort || 3040,
 });
 const rccContentBaseUrl = 'http://127.0.0.1';
-const textureAssetAvailability = new Map<string, { available: boolean; expiresAt: number }>();
+const assetContentAvailability = new Map<string, { available: boolean; expiresAt: number }>();
 // Express
 const app = express();
 app.use(express.text({ limit: '250mb' }));
 app.use(express.json());
 
-const isTextureAssetAvailable = async (assetId: string): Promise<boolean> => {
-	const cached = textureAssetAvailability.get(assetId);
+const isAssetContentAvailable = async (assetId: string): Promise<boolean> => {
+	const cached = assetContentAvailability.get(assetId);
 	if (cached && cached.expiresAt > Date.now()) {
 		return cached.available;
 	}
@@ -39,41 +39,87 @@ const isTextureAssetAvailable = async (assetId: string): Promise<boolean> => {
 	result.data.destroy();
 
 	if (result.status !== 200 && result.status !== 400 && result.status !== 404) {
-		throw new Error(`Unexpected status ${result.status} checking texture asset ${assetId}`);
+		throw new Error(`Unexpected status ${result.status} checking asset content ${assetId}`);
 	}
 
 	const available = result.status === 200;
-	textureAssetAvailability.set(assetId, {
-		available,
-		expiresAt: Date.now() + 60 * 1000,
-	});
+	if (available) {
+		assetContentAvailability.set(assetId, {
+			available,
+			expiresAt: Date.now() + 60 * 1000,
+		});
+	}
 	return available;
 };
 
-const removeUnavailableTextures = async (xml: string): Promise<string> => {
+const validateAssetContentReferences = async (xml: string): Promise<void> => {
 	const references = [...xml.matchAll(
-		/<Content name="(?:TextureId|Texture|ShirtTemplate|PantsTemplate|Graphic)">\s*<url>([^<]*)<\/url>/gi,
+		/<Content name="(MeshId|TextureId|Texture|ShirtTemplate|PantsTemplate|Graphic)">\s*<url>([^<]*)<\/url>/gi,
 	)];
-	const assetIds = [...new Set(references.map(([, url]) => url.match(/[?&]id=(\d+)/i)?.[1]).filter(
-		(assetId): assetId is string => assetId !== undefined,
-	))];
+	const contentReferences = references.flatMap(([, name, url]) => {
+		const assetId = url.match(/^rbxassetid:\/\/(\d+)$/i)?.[1] ?? url.match(/[?&]id=(\d+)/i)?.[1];
+		return assetId ? [{ name, assetId }] : [];
+	});
+	const assetIds = [...new Set(contentReferences.map(reference => reference.assetId))];
 	const availability = await Promise.all(assetIds.map(async assetId => [
 		assetId,
-		await isTextureAssetAvailable(assetId),
+		await isAssetContentAvailable(assetId),
 	] as const));
 	const unavailableIds = new Set(availability.filter(([, available]) => !available).map(([assetId]) => assetId));
+	const unavailableReferences = contentReferences.filter(reference => unavailableIds.has(reference.assetId));
 
-	if (unavailableIds.size === 0) {
-		return xml;
+	if (unavailableReferences.length > 0) {
+		throw new Error(`Asset references unavailable mesh or texture content: ${unavailableReferences
+			.map(reference => `${reference.name}=${reference.assetId}`).join(', ')}`);
+	}
+};
+
+const preflightAssetContentReferences = async (assetId: number): Promise<void> => {
+	const result = await axiosStatic.get(conf.baseUrl + '/asset', {
+		params: { id: assetId },
+		headers: {
+			'user-agent': 'Roblox/Linux',
+			Requester: 'server',
+			'bot-auth': conf.websiteBotAuth,
+		},
+		responseType: 'stream',
+		validateStatus: () => true,
+		timeout: 15000,
+	});
+
+	if (result.status !== 200) {
+		result.data.destroy();
+		throw new Error(`Asset content ${assetId} is unavailable (HTTP ${result.status})`);
 	}
 
-	return xml.replace(
-		/(<Content name="(?:TextureId|Texture|ShirtTemplate|PantsTemplate|Graphic)">\s*<url>)([^<]*)(<\/url>)/gi,
-		(match, prefix: string, url: string, suffix: string) => {
-			const assetId = url.match(/[?&]id=(\d+)/i)?.[1];
-			return assetId && unavailableIds.has(assetId) ? `${prefix}${suffix}` : match;
-		},
-	);
+	const chunks: Buffer[] = [];
+	let bufferedBytes = 0;
+	let isRobloxXml: boolean | undefined;
+	try {
+		for await (const chunk of result.data) {
+			const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+			chunks.push(data);
+			bufferedBytes += data.length;
+
+			if (isRobloxXml === undefined && bufferedBytes >= 16) {
+				const prefix = Buffer.concat(chunks, bufferedBytes).subarray(0, 64).toString('utf8').trimStart();
+				isRobloxXml = prefix.startsWith('<?xml') || /^<roblox(?:\s|>)/i.test(prefix);
+				if (!isRobloxXml) {
+					return;
+				}
+			}
+		}
+
+		if (isRobloxXml === undefined) {
+			const prefix = Buffer.concat(chunks, bufferedBytes).subarray(0, 64).toString('utf8').trimStart();
+			isRobloxXml = prefix.startsWith('<?xml') || /^<roblox(?:\s|>)/i.test(prefix);
+		}
+		if (isRobloxXml) {
+			await validateAssetContentReferences(Buffer.concat(chunks, bufferedBytes).toString('utf8'));
+		}
+	} finally {
+		result.data.destroy();
+	}
 };
 
 app.get(['/rcc-asset', '/rcc-asset/:id', '/Asset', '/Asset/', '/asset', '/asset/'], async (req, res) => {
@@ -99,6 +145,10 @@ app.get(['/rcc-asset', '/rcc-asset/:id', '/Asset', '/Asset/', '/asset', '/asset/
 			responseType: 'stream',
 			validateStatus: () => true,
 		});
+		if (result.status !== 200) {
+			result.data.destroy();
+			return res.status(result.status).send(`Asset content ${assetId} is unavailable (HTTP ${result.status})`);
+		}
 		res.status(result.status);
 		if (result.headers['content-type']) {
 			res.setHeader('content-type', result.headers['content-type']);
@@ -117,7 +167,8 @@ app.get(['/rcc-asset', '/rcc-asset/:id', '/Asset', '/Asset/', '/asset', '/asset/
 				}
 
 				const prefix = Buffer.concat(chunks, bufferedBytes).subarray(0, 64).toString('utf8').trimStart();
-				isRobloxXml = result.status === 200 && (prefix.startsWith('<roblox') || prefix.startsWith('<?xml'));
+				isRobloxXml = result.status === 200 &&
+					(prefix.startsWith('<?xml') || /^<roblox(?:\s|>)/i.test(prefix));
 				if (isRobloxXml) {
 					continue;
 				}
@@ -139,7 +190,9 @@ app.get(['/rcc-asset', '/rcc-asset/:id', '/Asset', '/Asset/', '/asset', '/asset/
 		}
 
 		if (isRobloxXml) {
-			const xml = (await removeUnavailableTextures(Buffer.concat(chunks, bufferedBytes).toString('utf8'))).replace(
+			const sourceXml = Buffer.concat(chunks, bufferedBytes).toString('utf8');
+			await validateAssetContentReferences(sourceXml);
+			const xml = sourceXml.replace(
 				/https?:\/\/(?:www\.)?(?:roblox\.com|economy-simulator\.org)\/asset\/?\?id=(\d+)/gi,
 				`${rccContentBaseUrl}/asset/?id=$1`
 			);
@@ -160,7 +213,7 @@ app.get(['/rcc-asset', '/rcc-asset/:id', '/Asset', '/Asset/', '/asset', '/asset/
 		if (res.headersSent) {
 			res.destroy(error instanceof Error ? error : undefined);
 		} else {
-			res.status(502).end();
+			res.status(502).send(error instanceof Error ? error.message : String(error));
 		}
 	}
 });
@@ -259,6 +312,12 @@ const onMessage = async (data: string) => {
 		};
 	}
 	try {
+		if (['GenerateThumbnailAsset', 'GenerateThumbnailTexture'].includes(cmd.command)) {
+			const assetId = Number(cmd.args[0]);
+			if (Number.isSafeInteger(assetId) && assetId > 0) {
+				await preflightAssetContentReferences(assetId);
+			}
+		}
 		// @ts-ignore
 		let results = await handle[cmd.command](...cmd.args);
 		return {
@@ -278,7 +337,7 @@ const onMessage = async (data: string) => {
 		console.error('[error] [ws handle try/catch]', err);
 		return {
 			status: 500,
-			code: 'InternalServerError',
+			code: err instanceof Error ? err.message : 'InternalServerError',
 			errorDetails: err,
 			id: cmd.id,
 		};

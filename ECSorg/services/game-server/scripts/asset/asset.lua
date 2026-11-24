@@ -18,12 +18,13 @@ Lighting.Outlines = false
 ContentProvider:SetBaseUrl("RCC_CONTENT_BASE_URL")
 local Insert = game:GetService("InsertService")
 Insert:SetAssetUrl("RCC_INSERT_ASSET_URL")
+local contentUrls = {}
 
 local function rewriteContentUrl(url)
     if type(url) ~= "string" then
         return url
     end
-    local id = string.match(url, "[?&]id=(%d+)")
+    local id = string.match(url, "^rbxassetid://(%d+)$") or string.match(url, "[?&]id=(%d+)")
     return id and "RCC_ASSET_PREFIX" .. id or url
 end
 
@@ -31,16 +32,23 @@ local function redirectAssetContent(item)
     if item:IsA("SpecialMesh") then
         item.MeshId = rewriteContentUrl(item.MeshId)
         item.TextureId = rewriteContentUrl(item.TextureId)
+        if item.MeshId ~= "" then table.insert(contentUrls, item.MeshId) end
+        if item.TextureId ~= "" then table.insert(contentUrls, item.TextureId) end
     elseif item:IsA("MeshPart") then
         item.MeshId = rewriteContentUrl(item.MeshId)
+        if item.MeshId ~= "" then table.insert(contentUrls, item.MeshId) end
     elseif item:IsA("Decal") or item:IsA("Texture") then
         item.Texture = rewriteContentUrl(item.Texture)
+        if item.Texture ~= "" then table.insert(contentUrls, item.Texture) end
     elseif item:IsA("Shirt") then
         item.ShirtTemplate = rewriteContentUrl(item.ShirtTemplate)
+        if item.ShirtTemplate ~= "" then table.insert(contentUrls, item.ShirtTemplate) end
     elseif item:IsA("Pants") then
         item.PantsTemplate = rewriteContentUrl(item.PantsTemplate)
+        if item.PantsTemplate ~= "" then table.insert(contentUrls, item.PantsTemplate) end
     elseif item:IsA("ShirtGraphic") then
         item.Graphic = rewriteContentUrl(item.Graphic)
+        if item.Graphic ~= "" then table.insert(contentUrls, item.Graphic) end
     end
 
     for _, child in pairs(item:GetChildren()) do
@@ -60,6 +68,18 @@ local function findAssetComponent(item, predicate)
     end
 end
 
+local function anchorAssetParts(item, targetModel)
+    if item:IsA("BasePart") then
+        item.Anchored = true
+        if not targetModel.PrimaryPart then
+            targetModel.PrimaryPart = item
+        end
+    end
+    for _, child in pairs(item:GetChildren()) do
+        anchorAssetParts(child, targetModel)
+    end
+end
+
     local function render()
         local model = Instance.new("Model");
         local assetIds = assetId
@@ -67,30 +87,47 @@ end
         for _, id in pairs(assetIds) do
             local asset = Insert:LoadAsset(id)
             redirectAssetContent(asset)
+            local found = findAssetComponent(asset, function(item)
+                return item:IsA("Accessory") or item:IsA("Accoutrement") or item:IsA("Tool") or
+                    item:IsA("Hat") or item:IsA("BasePart")
+            end)
+            if found then
+                renderTarget = found
+            end
             for _, child in pairs(asset:GetChildren()) do
                 child.Parent = model;
-                local found = findAssetComponent(child, function(item)
-                    return item:IsA("Accessory") or item:IsA("Accoutrement") or item:IsA("Tool") or item:IsA("Hat")
-                end)
-                if found then
-                    renderTarget = found
-                end
             end
         end
         model.Parent = game.Workspace
+        anchorAssetParts(model, model)
+        if #contentUrls > 0 then
+            ContentProvider:PreloadAsync(contentUrls)
+        end
 
         if not renderTarget then
             error("Asset contains no accessory, tool, or hat to frame")
         end
 
-        local camera = findAssetComponent(renderTarget, function(item)
+        local camera = findAssetComponent(model, function(item)
             return item:IsA("Camera") and item.Name == "ThumbnailCamera"
         end)
         if camera then
             print("Has ThumbnailCamera, now using it")
         else
             camera = Instance.new("Camera")
+            local bounds = model:GetModelCFrame()
+            local size = model:GetExtentsSize()
+            local maxDimension = math.max(size.X, size.Y, size.Z, 1)
+            local fieldOfView = 35
+            local distance = maxDimension / (2 * math.tan(math.rad(fieldOfView / 2))) * 1.15
+            camera.CameraType = Enum.CameraType.Scriptable
+            camera.FieldOfView = fieldOfView
+            camera.CoordinateFrame = CFrame.new(
+                bounds.p + Vector3.new(distance * 0.2, maxDimension * 0.1, distance),
+                bounds.p
+            )
         end
+        camera.CameraType = Enum.CameraType.Scriptable
         camera.Parent = game.Workspace
         game.Workspace.CurrentCamera = camera
 

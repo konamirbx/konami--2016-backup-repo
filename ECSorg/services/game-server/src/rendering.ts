@@ -36,7 +36,7 @@ export const awaitResult = (key: string): Promise<void> => {
 				return;
 			uploadCallbacks[key] = uploadCallbacks[key].filter(v => v !== cb);
 			delete uploadCallbacks[key];
-		}, 2 * 60 * 1000);
+		}, 6 * 60 * 1000);
 		if (!uploadCallbacks[key]) {
 			uploadCallbacks[key] = [];
 		}
@@ -50,7 +50,7 @@ export const getResult = (key: string, upscaleAmount: number): Promise<any> => {
 		let interval = setTimeout(() => {
 			rej('Timeout');
 			delete uploadCallbacks[key];
-		}, 2 * 60 * 1000);
+		}, 10 * 60 * 1000);
 		if (!uploadCallbacks[key]) {
 			uploadCallbacks[key] = [];
 		}

@@ -57,14 +57,17 @@ const isPortAvailable = (port: number): Promise<boolean> => {
 }
 
 const getFreeRccPort = async (): Promise<number> => {
-	for (let i = 64989; i < 64990; i++) {
-		let avail = await isPortAvailable(i);
-		console.log('[info] port available?',i,avail);
-		if (avail) {
-			return i;
+	const port = 64989;
+	const start = Date.now();
+	while (Date.now() - start < 60 * 1000) {
+		const available = await isPortAvailable(port);
+		console.log('[info] port available?', port, available);
+		if (available) {
+			return port;
 		}
+		await sleep(1000);
 	}
-	throw new Error('No ports available');
+	throw new Error(`RCC port ${port} did not become available within 60 seconds`);
 }
 
 import getScripts from '../scripts';
@@ -414,7 +417,7 @@ export default class CommandHandler extends StdExceptions {
 				'Content-Type': 'text/xml; charset=utf-8',
 			},
 			data: job.request,
-			timeout: 2 * 60 * 1000,
+			timeout: 5 * 60 * 1000,
 		});
 		// wait until over
 		// await getResult(job.jobId);
@@ -699,8 +702,9 @@ export default class CommandHandler extends StdExceptions {
 				console.log('[info] picked RCC instance data: running =',rcc.runningGames, 'renders =',rcc.renderCount, 'created =',rcc.createdAt, 'idx =',i);
 				i++;
 
-				if (rcc.renderCount >= maxRendersBeforeRestart) {
-					console.log('[info] RCC picked has too many renders, requesting a shutdown',rcc.renderCount,'vs',maxRendersBeforeRestart);
+				const isHealthy = !!rcc.rccReference && await this.isRccReady(rcc.rccReference.port);
+				if (rcc.renderCount >= maxRendersBeforeRestart || !isHealthy) {
+					console.log('[warn] RCC is unhealthy or has too many renders; requesting a restart');
 					await this.requestRccThumbnailerClose(rcc);
 				}else{
 					return rcc;
@@ -756,18 +760,20 @@ export default class CommandHandler extends StdExceptions {
 		if (!rcc || !rcc.rccReference) {
 			throw new Error('RCC reference is not available');
 		}
+		const uploadResult = awaitResult(job.jobId);
 		// send request
-		const result = await axiosClient.request({
-			method: 'POST',
-			url: 'http://127.0.0.1:' + rcc.rccReference.port + '/',
-			headers: {
-				'Content-Type': 'text/xml; charset=utf-8',
-			},
-			data: job.request,
-			timeout: 2 * 60 * 1000,
-		});
-		// wait until over
-		await awaitResult(job.jobId);
+		await Promise.all([
+			axiosClient.request({
+				method: 'POST',
+				url: 'http://127.0.0.1:' + rcc.rccReference.port + '/',
+				headers: {
+					'Content-Type': 'text/xml; charset=utf-8',
+				},
+				data: job.request,
+				timeout: 5 * 60 * 1000,
+			}),
+			uploadResult,
+		]);
 	}
 	
 	private async requestRccThumbnailerClose(rcc: IGameEntry) {

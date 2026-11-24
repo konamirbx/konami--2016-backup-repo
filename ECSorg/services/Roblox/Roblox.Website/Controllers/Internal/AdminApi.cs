@@ -1803,8 +1803,18 @@ Thank you for your understanding,
     [HttpPost("asset/re-render"), StaffFilter(Access.RequestAssetReRender)]
     public async Task RequestAssetReRender([Required, FromBody] ReRenderRequest request)
     {
+        if (request.assetId <= 0)
+            throw new StaffException("Invalid assetId");
+
         var details = await services.assets.GetAssetCatalogInfo(request.assetId);
-        services.assets.RenderAsset(request.assetId, details.assetType);
+        try
+        {
+            await services.assets.RenderAssetAsync(request.assetId, details.assetType);
+        }
+        catch (Exception e)
+        {
+            throw new StaffException($"Failed to render asset {request.assetId}: {e.Message}");
+        }
     }
     
     [HttpGet("asset/details"), StaffFilter(Access.GetProductDetails)]

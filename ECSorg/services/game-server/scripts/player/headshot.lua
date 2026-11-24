@@ -146,6 +146,7 @@ end
     local RunService = game:GetService('RunService')
     local ContentProvider = game:GetService('ContentProvider')
     local ThumbnailGenerator = game:GetService('ThumbnailGenerator')
+    game:GetService("StarterPlayer").LoadCharacterAppearance = false
     game:GetService('StarterGui'):SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
     ThumbnailGenerator.GraphicsMode = 4; -- switch to 4 (apparently noop but all roblox code has this line so...)
 
@@ -164,7 +165,7 @@ end
         if type(url) ~= "string" then
             return url
         end
-        local assetId = string.match(url, "[?&]id=(%d+)")
+        local assetId = string.match(url, "^rbxassetid://(%d+)$") or string.match(url, "[?&]id=(%d+)")
         if assetId then
             return "RCC_ASSET_PREFIX" .. assetId
         end

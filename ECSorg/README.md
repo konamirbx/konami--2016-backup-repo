@@ -4,6 +4,17 @@ I no longer work on this project. I now work on Sqarin, a new 2017 revival. You 
 # ECS
 Economy Simulator is a ROBLOX revival that allows you to Relive Roblox 2016.
 
+# Cloudflare Tunnel deployment
+The Docker Compose stack does not publish service ports on the host. The frontend, website API, asset validator, database, Redis, and render WebSocket communicate over the private Compose network.
+
+To expose the site through Cloudflare Tunnel:
+1. Copy `services/.env.example` to `services/.env`.
+2. Set `FRONTEND_BASE_URL` to the public HTTPS URL for your site and set `CLOUDFLARE_TUNNEL_TOKEN` to your tunnel token. Keep the token private.
+3. Configure the tunnel's public hostname to forward to `http://proxy:80`.
+4. From `services`, start the stack with `docker compose --profile cloudflare up --build -d`.
+
+The tunnel reaches only the Nginx proxy. Asset validation and thumbnail/avatar rendering continue to use their internal service URLs and are not exposed through Cloudflare.
+
 # CREDITS
 - floatzel - creating the original economy simulator
 - tenshi - old co owner of economy simulator, he probably helped with the game-server stuff.

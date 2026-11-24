@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { navigate } from "svelte-routing";
 	import Main from "../components/templates/Main.svelte";
 	import request from "../lib/request";
 	let disabled = false;
+	let assetId = "";
 	let errorMessage: string | undefined;
+	let successMessage: string | undefined;
 	import * as rank from "../stores/rank";
 	rank.promise.then(() => {
 		if (!rank.is("admin")) {
@@ -25,9 +26,14 @@
 			{/if}
 		</div>
 		<div class="col-6">
-			<label for="name">Asset ID</label>
-			<input type="text" class="form-control" id="assetid" {disabled} />
+			<label for="assetid">Asset ID</label>
+			<input type="number" class="form-control" id="assetid" min="1" step="1" bind:value={assetId} {disabled} />
 		</div>
+		{#if successMessage}
+			<div class="col-12 mt-3">
+				<p>{successMessage}</p>
+			</div>
+		{/if}
 
 		<div class="col-12 mt-4">
 			<button
@@ -38,11 +44,20 @@
 					if (disabled) {
 						return;
 					}
+					const parsedAssetId = Number(assetId);
+					if (!Number.isSafeInteger(parsedAssetId) || parsedAssetId <= 0) {
+						errorMessage = "Enter a valid asset ID.";
+						successMessage = undefined;
+						return;
+					}
+
 					disabled = true;
+					errorMessage = undefined;
+					successMessage = undefined;
 					request
-						.post("/asset/re-render", { assetId: document.getElementById("assetid").value })
-						.then((d) => {
-							alert("Render requested");
+						.post("/asset/re-render", { assetId: parsedAssetId })
+						.then(() => {
+							successMessage = `Asset ${parsedAssetId} rendered successfully.`;
 						})
 						.catch((e) => {
 							errorMessage = e.message;

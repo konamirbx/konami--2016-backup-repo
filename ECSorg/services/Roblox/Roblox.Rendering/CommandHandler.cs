@@ -11,6 +11,7 @@ namespace Roblox.Rendering
     public static class CommandHandler
     {
         private static System.Threading.Mutex mux { get; set; } = new();
+        private static readonly SemaphoreSlim sendMux = new(1, 1);
         private static ClientWebSocket? ws { get; set; }
         private static Dictionary<string, Func<RenderResponse<Stream>,int>> resultListeners { get; } = new();
         private static Uri wsUrl { get; set; }
@@ -56,6 +57,7 @@ namespace Roblox.Rendering
                         id = decoded.id,
                         status = decoded.status,
                         data = null,
+                        code = decoded.code,
                     };
 
                     // data is null when statusCode != 200
@@ -130,64 +132,95 @@ namespace Roblox.Rendering
                 args = arguments,
                 id = id,
             };
-            var res = new TaskCompletionSource<RenderResponse<Stream>>();
-            var responseMutex = new Mutex();
+            var res = new TaskCompletionSource<RenderResponse<Stream>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             
             // Setup listener
             mux.WaitOne();
             resultListeners[id] = stream =>
             {
                 Console.WriteLine("[info] SendCommand() over");
-                lock (responseMutex)
-                {
-                    res.SetResult(stream);
-                }
-
+                res.TrySetResult(stream);
                 return 0; 
             };
             mux.ReleaseMutex();
-            // Send message
-            var bits = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cmd));
-            while (ws is not {State: WebSocketState.Open})
-            {
-                //Writer.Info(LogGroup.GeneralRender, "Ws not available, retry in a second");
-#if DEBUG 
-                await Task.Delay(TimeSpan.FromSeconds(60), cancellationToken  ?? CancellationToken.None);
-#else
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken  ?? CancellationToken.None);
-#endif
-                if (cancellationToken is {IsCancellationRequested: true})
-                    throw new TaskCanceledException();
-            }
-            await ws.SendAsync(bits, WebSocketMessageType.Text, true, cancellationToken ?? CancellationToken.None);
-
-            await using var register = cancellationToken?.Register(() =>
+            var token = cancellationToken ?? CancellationToken.None;
+            using var register = cancellationToken?.Register(() =>
             {
                 mux.WaitOne();
-                resultListeners.Remove(id);
-                mux.ReleaseMutex();
-                // TODO: Would be nice if we could send a message to WS telling it to cancel the task
-                // TrySetCanceled instead of SetCanceled due to WEB-35
-                lock (responseMutex)
+                try
                 {
-                    if (res.TrySetCanceled(cancellationToken.Value) && command != "Cancel")
-                    {
-                        SendCommand("Cancel", new List<dynamic>()
-                        {
-                            id,
-                        }, CancellationToken.None);
-                    }
+                    resultListeners.Remove(id);
+                }
+                finally
+                {
+                    mux.ReleaseMutex();
+                }
+
+                if (res.TrySetCanceled(token) && command != "Cancel")
+                {
+                    _ = SendCommand("Cancel", new List<dynamic> { id }, CancellationToken.None);
                 }
             });
-            var resp = await res.Task;
-            return resp;
+
+            try
+            {
+                var bits = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cmd));
+                while (true)
+                {
+                    var socket = ws;
+                    if (socket is not {State: WebSocketState.Open})
+                    {
+#if DEBUG 
+                        await Task.Delay(TimeSpan.FromSeconds(5), token);
+#else
+                        await Task.Delay(TimeSpan.FromSeconds(5), token);
+#endif
+                        continue;
+                    }
+
+                    await sendMux.WaitAsync(token);
+                    try
+                    {
+                        socket = ws;
+                        if (socket is not {State: WebSocketState.Open})
+                        {
+                            continue;
+                        }
+
+                        await socket.SendAsync(bits, WebSocketMessageType.Text, true, token);
+                        break;
+                    }
+                    finally
+                    {
+                        sendMux.Release();
+                    }
+                }
+
+                return await res.Task;
+            }
+            catch
+            {
+                mux.WaitOne();
+                try
+                {
+                    resultListeners.Remove(id);
+                }
+                finally
+                {
+                    mux.ReleaseMutex();
+                }
+
+                throw;
+            }
         }
         
         
         private static async Task<Stream> SendCmdWithErrHandlingAsync(string cmd, IEnumerable<dynamic> arguments, CancellationToken? cancellationToken = null)
         {
             var result = await SendCommand(cmd, arguments, cancellationToken);
-            if (result.status != 200) throw new Exception("Render failed with status = " + result.status);
+            if (result.status != 200)
+                throw new Exception(result.code ?? "Render failed with status = " + result.status);
             if (result.data == null) throw new Exception("Null stream returned from SendCommand");
             return result.data;
         }

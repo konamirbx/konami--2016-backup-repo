@@ -8,6 +8,7 @@ public class AvatarCache : ServiceBase, IService
 {
     private Mutex updatingMutex { get; } = new();
     private Dictionary<long, DateTime> updatedInfo { get; set; } = new();
+    private Dictionary<long, long> updateVersions { get; } = new();
 
     private string GetPendingAssetsKey(long userId)
     {
@@ -25,7 +26,8 @@ public class AvatarCache : ServiceBase, IService
     public async Task SetPendingAssets(long userId, IEnumerable<long> assetIds)
     {
         await Cache.distributed.StringSetAsync(GetPendingAssetsKey(userId),
-            JsonSerializer.Serialize(new AvatarCacheAsset(assetIds.Distinct())), TimeSpan.FromMinutes(1));
+            JsonSerializer.Serialize(new AvatarCacheAsset(assetIds.Distinct())), TimeSpan.FromMinutes(15));
+        MarkUpdated(userId);
     }
 
     private string GetPendingColorsKey(long userId)
@@ -44,7 +46,38 @@ public class AvatarCache : ServiceBase, IService
     public async Task SetColors(long userId, ColorEntry colors)
     {
         await Cache.distributed.StringSetAsync(GetPendingColorsKey(userId),
-            JsonSerializer.Serialize(colors), TimeSpan.FromMinutes(1));
+            JsonSerializer.Serialize(colors), TimeSpan.FromMinutes(15));
+        MarkUpdated(userId);
+    }
+
+    private void MarkUpdated(long userId)
+    {
+        lock (updatingMutex)
+        {
+            updateVersions[userId] = updateVersions.TryGetValue(userId, out var version) ? version + 1 : 1;
+        }
+    }
+
+    public long GetUpdateVersion(long userId)
+    {
+        lock (updatingMutex)
+        {
+            return updateVersions.TryGetValue(userId, out var version) ? version : 0;
+        }
+    }
+
+    public bool TryCompleteRender(long userId, long renderedVersion)
+    {
+        lock (updatingMutex)
+        {
+            var currentVersion = updateVersions.TryGetValue(userId, out var version) ? version : 0;
+            if (currentVersion != renderedVersion)
+                return false;
+
+            updatedInfo.Remove(userId);
+            updateVersions.Remove(userId);
+            return true;
+        }
     }
 
     public bool AttemptScheduleRender(long userId)
@@ -62,8 +95,8 @@ public class AvatarCache : ServiceBase, IService
     {
         lock (updatingMutex)
         {
-            if (updatedInfo.ContainsKey(userId))
-                updatedInfo.Remove(userId);
+            updatedInfo.Remove(userId);
+            updateVersions.Remove(userId);
         }
     }
     

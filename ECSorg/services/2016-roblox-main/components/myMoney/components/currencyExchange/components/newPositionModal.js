@@ -121,7 +121,7 @@ const NewPositionModal = props => {
           setLocked(true);
           createCurrencyExchangeOrder({
             currency,
-            desiredRate: isMarketOrder ? amt : Math.ceil(rate * 1000),
+            desiredRate: Math.ceil(rate * 1000),
             isMarketOrder,
             amount: amt,
           }).then(() => {
