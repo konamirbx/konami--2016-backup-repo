@@ -108,7 +108,7 @@ public class ThumbnailsControllerV1 : ControllerBase
         foreach (var item in itemsToFix)
         {
             using var cancellation = new CancellationTokenSource();
-            cancellation.CancelAfter(TimeSpan.FromMinutes(2));
+            cancellation.CancelAfter(TimeSpan.FromMinutes(7));
             Writer.Info(LogGroup.FixBrokenThumbnails, "Fixing asset {0}:{1}", item.assetId, item.assetType);
             try
             {

@@ -690,6 +690,12 @@ export default class CommandHandler extends StdExceptions {
 		}
 	}
 
+	private async QueueThumbnail(job: IQueueEntry, upscaleAmount: number, priority = 1): Promise<string> {
+		const result = getResult(job.jobId, upscaleAmount);
+		this.addToQueue(job, priority);
+		return (await result).thumbnail;
+	}
+
 	private async GetRccForRender(): Promise<IGameEntry> {
 		let applicable = this.RenderRcc.filter(v => !v.rccClosed && v.rccReference).sort((a,b) => {
 			return a.runningGames > b.runningGames ? 1 : a.runningGames === b.runningGames ? (
@@ -867,8 +873,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.asset).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.asset).toString())
 		, uuid.v4());
-		this.addToQueue(job, 0);
-		return (await getResult(job.jobId, resolutionMultiplier.asset)).thumbnail;
+		return this.QueueThumbnail(job, resolutionMultiplier.asset, 0);
 	}
 
 	private async GetTeeShirtThumb(assetId: number): Promise<Buffer> {
@@ -913,8 +918,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.asset).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.asset).toString())
 		, uuid.v4());
-		this.addToQueue(job);
-		return (await getResult(job.jobId, resolutionMultiplier.asset)).thumbnail;
+		return this.QueueThumbnail(job, resolutionMultiplier.asset);
 	}
 
 	public async GenerateThumbnailHead(assetId: number): Promise<string> {
@@ -924,8 +928,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.asset).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.asset).toString())
 		, uuid.v4());
-		this.addToQueue(job);
-		return (await getResult(job.jobId, resolutionMultiplier.asset)).thumbnail;
+		return this.QueueThumbnail(job, resolutionMultiplier.asset);
 	}
 
 
@@ -936,8 +939,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (x * resolutionMultiplier.game).toString())
 				.replace(/_Y_RES_/g, (y * resolutionMultiplier.game).toString())
 		, uuid.v4());
-		this.addToQueue(job);
-		return (await getResult(job.jobId, resolutionMultiplier.game)).thumbnail;
+		return this.QueueThumbnail(job, resolutionMultiplier.game);
 	}
 
 	/**
@@ -951,8 +953,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/65789275746246/g, assetId.toString())
 				.replace(/358843/g, assetTypeId.toString())
 		, uuid.v4())
-		this.addToQueue(jobRequest);
-		return (await getResult(jobRequest.jobId, 1)).thumbnail;
+		return this.QueueThumbnail(jobRequest, 1);
 	}
 
 	/**
@@ -970,12 +971,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.userHeadshot).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.userHeadshot).toString())
 		, uuid.v4());
-		// create the job
-		this.addToQueue(jobRequest, 0);
-		// await job
-		const result = await getResult(jobRequest.jobId, resolutionMultiplier.userHeadshot);
-		// return base64 value
-		return result.thumbnail;
+		return this.QueueThumbnail(jobRequest, resolutionMultiplier.userHeadshot, 0);
 	}
 
 	/**
@@ -993,12 +989,7 @@ export default class CommandHandler extends StdExceptions {
 				.replace(/_X_RES_/g, (420 * resolutionMultiplier.userThumbnail).toString())
 				.replace(/_Y_RES_/g, (420 * resolutionMultiplier.userThumbnail).toString())
 		, uuid.v4());
-		// create the job
-		this.addToQueue(jobRequest, 0);
-		// await job
-		const result = await getResult(jobRequest.jobId, resolutionMultiplier.userThumbnail);
-		// return base64 value
-		return result.thumbnail;
+		return this.QueueThumbnail(jobRequest, resolutionMultiplier.userThumbnail, 0);
 	}
 
 	private async ConvertGeneric(mode: string, base64EncodedFile: string): Promise<string> {

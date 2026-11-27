@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -96,8 +97,11 @@ namespace Roblox.Website.Controllers
         }
 
         [HttpGet("asset")]
-        public async Task<MVC.ActionResult> GetAssetById(long id)
+        public async Task<MVC.ActionResult> GetAssetById(long id, Type? assetTypeId = null)
         {
+            if (assetTypeId is not null && assetTypeId is not Type.Image and not Type.Mesh)
+                throw new BadRequestException();
+
             // TODO: This endpoint needs to be updated to return a URL to the asset, not the asset itself.
             // The reason for this is so that cloudflare can cache assets without caching the response of this endpoint, which might be different depending on the client making the request (e.g. under 18 user, over 18 user, rcc, etc).
             var is18OrOver = false;
@@ -172,8 +176,9 @@ namespace Roblox.Website.Controllers
                     try
                     {
                         // Doesn't exist yet, so create it
-                        var migrationResult = await MigrateItem.MigrateItemFromRoblox(assetId.ToString(), false, null,
-                            new List<Type>()
+                        var allowedTypes = assetTypeId is { } hintedType
+                            ? new[] { hintedType }
+                            : new[]
                             {
                                 Type.Image,
                                 Type.Audio,
@@ -193,7 +198,19 @@ namespace Roblox.Website.Controllers
                                 Type.SwimAnimation,
                                 Type.WalkAnimation,
                                 Type.PoseAnimation,
-                            }, default, default, true);
+                            };
+                        ProductDataResponse? defaultResponse = assetTypeId is { } typeHint
+                            ? new ProductDataResponse
+                            {
+                                AssetTypeId = typeHint,
+                                Name = $"Asset{assetId}",
+                                Description = "Renderer dependency",
+                                Created = DateTime.UtcNow,
+                                Updated = DateTime.UtcNow,
+                            }
+                            : null;
+                        var migrationResult = await MigrateItem.MigrateItemFromRoblox(assetId.ToString(), false, null,
+                            allowedTypes, defaultResponse, doRender: false);
                         assetId = migrationResult.assetId;
                     }
                     catch (AssetTypeNotAllowedException)
@@ -205,11 +222,18 @@ namespace Roblox.Website.Controllers
                     }
                     catch (Exception e)
                     {
-                        // temporary failure? mark as invalid, but only temporarily
                         Writer.Info(LogGroup.AssetDelivery, "Failed to migrate asset " + assetId + " - " + e.Message + "\n" + e.StackTrace);
-                        await Services.Cache.distributed.StringSetAsync(invalidIdKey,
-                            "{}", TimeSpan.FromMinutes(1));
-                        throw new RobloxException(400, 0, "Asset is invalid or does not exist");
+                        var isTransientFailure =
+                            e is HttpRequestException { StatusCode: HttpStatusCode.TooManyRequests } ||
+                            e is OperationCanceledException;
+                        if (!isTransientFailure)
+                        {
+                            await Services.Cache.distributed.StringSetAsync(invalidIdKey,
+                                "{}", TimeSpan.FromMinutes(1));
+                            throw new RobloxException(400, 0, "Asset is invalid or does not exist");
+                        }
+
+                        throw new RobloxException(503, 0, "Asset delivery is temporarily unavailable");
                     }
                 }
                 details = await services.assets.GetAssetCatalogInfo(assetId);

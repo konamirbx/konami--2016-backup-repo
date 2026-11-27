@@ -476,6 +476,7 @@ public class AssetsService : ServiceBase, IService
             try
             {
                 response = await Rendering.CommandHandler.RequestAssetThumbnail(assetId, cancellationToken);
+                await ValidateAssetThumbnail(response, assetId);
                 break;
             }
             catch (Exception e)
@@ -487,7 +488,6 @@ public class AssetsService : ServiceBase, IService
             }
         }
 
-        await ValidateAssetThumbnail(response, assetId);
         var key = await UploadAssetContent(response, Configuration.ThumbnailsDirectory, "png");
         await InsertOrReplaceThumbnail(assetId, latestVersion.assetVersionId, key, ModerationStatus.ReviewApproved);
     }

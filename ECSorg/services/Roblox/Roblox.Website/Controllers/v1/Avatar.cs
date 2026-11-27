@@ -38,22 +38,40 @@ public class AvatarControllerV1 : ControllerBase
             try
             {
                 using var avatarService = Roblox.Services.ServiceProvider.GetOrCreate<AvatarService>();
+                var failedVersion = -1L;
+                var consecutiveFailures = 0;
                 while (true)
                 {
                     var renderedVersion = cache.GetUpdateVersion(userId);
+                    if (renderedVersion != failedVersion)
+                    {
+                        failedVersion = renderedVersion;
+                        consecutiveFailures = 0;
+                    }
+
+                    var renderSucceeded = false;
                     try
                     {
                         var assetIds = await cache.GetPendingAssets(userId);
                         var newColors = await cache.GetColors(userId);
                         await avatarService.RedrawAvatar(userId, assetIds, newColors, AvatarType.R6, forceRedraw);
+                        renderSucceeded = true;
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine("Background render failed: {0}\n{1}", e.Message, e.StackTrace);
+                        consecutiveFailures++;
                     }
 
-                    if (cache.TryCompleteRender(userId, renderedVersion))
+                    if (renderSucceeded && cache.TryCompleteRender(userId, renderedVersion))
                         break;
+
+                    if (!renderSucceeded && consecutiveFailures >= 2 &&
+                        cache.TryAbandonRender(userId, renderedVersion))
+                    {
+                        await avatarService.UpdateUserAvatarImages(userId, null, null);
+                        break;
+                    }
 
                     await Task.Delay(TimeSpan.FromSeconds(2));
                 }

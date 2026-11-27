@@ -4,8 +4,24 @@ I no longer work on this project. I now work on Sqarin, a new 2017 revival. You 
 # ECS
 Economy Simulator is a ROBLOX revival that allows you to Relive Roblox 2016.
 
+## Run on macOS with Docker Desktop
+
+Install and start Docker Desktop, then from the repository root run:
+
+```sh
+cd ECSorg/services
+cp .env.example .env
+docker compose up --build -d
+```
+
+Open [http://roblox.localhost:8080](http://roblox.localhost:8080). On Apple silicon, enable Docker Desktop's Rosetta support for x86/amd64 containers if available. The game-server renderer is intentionally built as `linux/amd64` because its RCC dependency is a Windows executable run with 32-bit Wine; the other services use the host's native container architecture. The initial renderer build may be slow on Apple silicon.
+
+The Compose stack binds its host ports to `127.0.0.1`; you do not need to forward ports for local use. Keep the named volumes when stopping with `docker compose down`; `docker compose down -v` deletes the database and uploaded data.
+
+To make the website public through Cloudflare Tunnel, follow the Cloudflare instructions below and start Compose with the `cloudflare` profile instead of the local-only command. Docker Compose still runs and connects all application services; Cloudflare only routes public website traffic to the Nginx proxy.
+
 # Cloudflare Tunnel deployment
-The Docker Compose stack does not publish service ports on the host. The frontend, website API, asset validator, database, Redis, and render WebSocket communicate over the private Compose network.
+Docker Compose handles the ports and private networking between the website, frontend, database, Redis, asset validator, and renderer. Cloudflare Tunnel provides the public hostname and sends web traffic to `http://proxy:80`; no router port forwarding is required. All host-published Compose ports are bound to localhost. Do not expose the database, Redis, asset validator, website API, render WebSocket, or frontend directly.
 
 To expose the site through Cloudflare Tunnel:
 1. Copy `services/.env.example` to `services/.env`.
@@ -13,13 +29,15 @@ To expose the site through Cloudflare Tunnel:
 3. Configure the tunnel's public hostname to forward to `http://proxy:80`.
 4. From `services`, start the stack with `docker compose --profile cloudflare up --build -d`.
 
-The tunnel reaches only the Nginx proxy. Asset validation and thumbnail/avatar rendering continue to use their internal service URLs and are not exposed through Cloudflare.
+The tunnel reaches only the Nginx proxy. Asset validation and thumbnail/avatar rendering continue to use their internal service URLs and are not exposed through Cloudflare. This HTTP hostname setup does not publish game-client connections or arbitrary TCP/UDP ports; public gameplay needs a separate exposure method that supports its required protocol.
 
 # CREDITS
 - floatzel - creating the original economy simulator
 - tenshi - old co owner of economy simulator, he probably helped with the game-server stuff.
 
 # HOW TO RUN/BUILD/COMPILE
+
+The following legacy, host-by-host instructions are for Windows/Linux; they do not run the Windows RCC executable natively on macOS. On macOS, use the Docker Desktop instructions above.
 
 You will need the following dependencies:
 - Windows + WSL or Linux (Currently Windows is more recommended and is easier)

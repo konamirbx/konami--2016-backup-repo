@@ -80,6 +80,20 @@ public class AvatarCache : ServiceBase, IService
         }
     }
 
+    public bool TryAbandonRender(long userId, long renderedVersion)
+    {
+        lock (updatingMutex)
+        {
+            var currentVersion = updateVersions.TryGetValue(userId, out var version) ? version : 0;
+            if (currentVersion != renderedVersion)
+                return false;
+
+            updatedInfo.Remove(userId);
+            updateVersions.Remove(userId);
+            return true;
+        }
+    }
+
     public bool AttemptScheduleRender(long userId)
     {
         lock (updatingMutex)

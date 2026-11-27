@@ -30,6 +30,9 @@ public class Login : RobloxPageModel
     
     public bool loginDisabled { get; set; }
     public bool resetPasswordEnabled => FeatureFlags.IsEnabled(FeatureFlag.PasswordReset);
+    public bool directSignupEnabled =>
+        string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(Environment.GetEnvironmentVariable("Development__AllowDirectSignup"), "true", StringComparison.OrdinalIgnoreCase);
     [BindProperty]
     public string? username { get; set; }
     [BindProperty]

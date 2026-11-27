@@ -14,19 +14,21 @@ const ws = new WSLib.Server({
 });
 const rccContentBaseUrl = 'http://127.0.0.1';
 const assetContentAvailability = new Map<string, { available: boolean; expiresAt: number }>();
+const assetContentPreflight = new Map<number, { promise: Promise<void>; expiresAt: number }>();
 // Express
 const app = express();
 app.use(express.text({ limit: '250mb' }));
 app.use(express.json());
 
-const isAssetContentAvailable = async (assetId: string): Promise<boolean> => {
-	const cached = assetContentAvailability.get(assetId);
+const isAssetContentAvailable = async (assetId: string, assetTypeId: number): Promise<boolean> => {
+	const cacheKey = `${assetId}:${assetTypeId}`;
+	const cached = assetContentAvailability.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return cached.available;
 	}
 
 	const result = await axiosStatic.get(conf.baseUrl + '/asset', {
-		params: { id: assetId },
+		params: { id: assetId, assetTypeId },
 		headers: {
 			'user-agent': 'Roblox/Linux',
 			Requester: 'server',
@@ -44,7 +46,7 @@ const isAssetContentAvailable = async (assetId: string): Promise<boolean> => {
 
 	const available = result.status === 200;
 	if (available) {
-		assetContentAvailability.set(assetId, {
+		assetContentAvailability.set(cacheKey, {
 			available,
 			expiresAt: Date.now() + 60 * 1000,
 		});
@@ -58,15 +60,22 @@ const validateAssetContentReferences = async (xml: string): Promise<void> => {
 	)];
 	const contentReferences = references.flatMap(([, name, url]) => {
 		const assetId = url.match(/^rbxassetid:\/\/(\d+)$/i)?.[1] ?? url.match(/[?&]id=(\d+)/i)?.[1];
-		return assetId ? [{ name, assetId }] : [];
+		return assetId ? [{ name, assetId, assetTypeId: name === 'MeshId' ? 4 : 1 }] : [];
 	});
-	const assetIds = [...new Set(contentReferences.map(reference => reference.assetId))];
-	const availability = await Promise.all(assetIds.map(async assetId => [
-		assetId,
-		await isAssetContentAvailable(assetId),
-	] as const));
-	const unavailableIds = new Set(availability.filter(([, available]) => !available).map(([assetId]) => assetId));
-	const unavailableReferences = contentReferences.filter(reference => unavailableIds.has(reference.assetId));
+	const assetReferences = [...new Map(contentReferences.map(reference => [
+		`${reference.assetId}:${reference.assetTypeId}`,
+		reference,
+	] as const)).values()];
+	const availability: Array<{ reference: typeof assetReferences[number]; available: boolean }> = [];
+	for (const reference of assetReferences) {
+		availability.push({
+			reference,
+			available: await isAssetContentAvailable(reference.assetId, reference.assetTypeId),
+		});
+	}
+	const unavailableReferences = availability
+		.filter(({ available }) => !available)
+		.map(({ reference }) => reference);
 
 	if (unavailableReferences.length > 0) {
 		throw new Error(`Asset references unavailable mesh or texture content: ${unavailableReferences
@@ -74,7 +83,26 @@ const validateAssetContentReferences = async (xml: string): Promise<void> => {
 	}
 };
 
-const preflightAssetContentReferences = async (assetId: number): Promise<void> => {
+const preflightAssetContentReferences = (assetId: number): Promise<void> => {
+	const cached = assetContentPreflight.get(assetId);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.promise;
+	}
+
+	const pending = loadAssetContentReferences(assetId);
+	assetContentPreflight.set(assetId, {
+		promise: pending,
+		expiresAt: Date.now() + 60 * 1000,
+	});
+	void pending.catch(() => {
+		if (assetContentPreflight.get(assetId)?.promise === pending) {
+			assetContentPreflight.delete(assetId);
+		}
+	});
+	return pending;
+};
+
+const loadAssetContentReferences = async (assetId: number): Promise<void> => {
 	const result = await axiosStatic.get(conf.baseUrl + '/asset', {
 		params: { id: assetId },
 		headers: {
@@ -316,6 +344,16 @@ const onMessage = async (data: string) => {
 			const assetId = Number(cmd.args[0]);
 			if (Number.isSafeInteger(assetId) && assetId > 0) {
 				await preflightAssetContentReferences(assetId);
+			}
+		} else if (['GenerateThumbnail', 'GenerateThumbnailHeadshot'].includes(cmd.command)) {
+			const avatar = cmd.args[0];
+			if (Array.isArray(avatar?.assets)) {
+				for (const asset of avatar.assets) {
+					const assetId = Number(asset?.id);
+					if (Number.isSafeInteger(assetId) && assetId > 0) {
+						await preflightAssetContentReferences(assetId);
+					}
+				}
 			}
 		}
 		// @ts-ignore

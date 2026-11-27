@@ -164,26 +164,51 @@ public class RobloxApi
         // Literally all it gets is the "assetTypeId". Everything else is blank.
         using var cancel = new CancellationTokenSource();
         cancel.CancelAfter(TimeSpan.FromSeconds(30));
-        var response = await _client.GetAsync("https://assetdelivery.roblox.com/v2/asset?id=" + assetId, cancel.Token);
-        if (!response.IsSuccessStatusCode)
+        var attempts = 0;
+        while (true)
         {
-            throw new Exception("Unexpected status code from AssetDeliveryV2: " + response.StatusCode);
-        }
+            using var response = await _client.GetAsync("https://assetdelivery.roblox.com/v2/asset?id=" + assetId,
+                cancel.Token);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                attempts++;
+                if (attempts >= 5)
+                {
+                    throw new HttpRequestException("AssetDeliveryV2 rate limit persisted after retries",
+                        null, response.StatusCode);
+                }
 
-        var str = await response.Content.ReadAsStringAsync(cancel.Token);
-        var json = JsonSerializer.Deserialize<AssetDeliveryV2Response>(str);
-        if (json == null)
-            throw new Exception("Bad json from assetdelivery");
-        return new ProductInfoWithAssetDelivery()
-        {
-            AssetTypeId = json.assetTypeId,
-            Name = "Asset" + assetId,
-            Description = "ConversionV1.0",
-            Created = DateTime.UtcNow,
-            Updated = DateTime.UtcNow,
-            
-            location = json.locations?.FirstOrDefault(a => a.assetFormat == "source")?.location,
-        };
+                var retryAfter = response.Headers.RetryAfter;
+                var delay = retryAfter?.Delta ??
+                            (retryAfter?.Date is { } retryDate
+                                ? retryDate - DateTimeOffset.UtcNow
+                                : TimeSpan.FromSeconds(Math.Pow(2, attempts - 1)));
+                await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.Zero, cancel.Token);
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    "Unexpected status code from AssetDeliveryV2: " + response.StatusCode,
+                    null, response.StatusCode);
+            }
+
+            var str = await response.Content.ReadAsStringAsync(cancel.Token);
+            var json = JsonSerializer.Deserialize<AssetDeliveryV2Response>(str);
+            if (json == null)
+                throw new Exception("Bad json from assetdelivery");
+            return new ProductInfoWithAssetDelivery()
+            {
+                AssetTypeId = json.assetTypeId,
+                Name = "Asset" + assetId,
+                Description = "ConversionV1.0",
+                Created = DateTime.UtcNow,
+                Updated = DateTime.UtcNow,
+
+                location = json.locations?.FirstOrDefault(a => a.assetFormat == "source")?.location,
+            };
+        }
     }
 
     private async Task<ProductDataResponse> GetProductInfoFromHtml(long assetId)

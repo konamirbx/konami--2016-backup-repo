@@ -24,6 +24,10 @@
                 {
                     <p>If you do not have an account, you can <a href="/auth/signup?applicationId=@Model.applicationId">create one here</a>.</p>
                 }
+                else if (Model.directSignupEnabled)
+                {
+                    <p>New here? <a href="/auth/signup">Create an account</a>.</p>
+                }
                 else
                 {
                     <p>If you do not have an account, you can <a href="/auth/application">create one here</a>.</p>
